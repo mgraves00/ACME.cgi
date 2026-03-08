@@ -33,7 +33,7 @@ GREP=$(which grep)
 
 find_conf() {
 	local _f
-	for _f in "/etc/ACME_helper.conf" ".env"; do
+	for _f in "/etc/ACME_helper.conf" "/app/config/ACME_helper.conf" ".env"; do
 		if [ -f "${_f}" ]; then
 			echo ${_f}
 			return
