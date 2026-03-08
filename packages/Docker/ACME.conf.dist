@@ -1,0 +1,63 @@
+# ACME.cgi config
+
+# All paths are respective of the CHROOT environment (if used).
+
+# Where to save logs
+# LOG_FILE = <file_path>
+#LOG_FILE="/logs/acme.log"
+
+# Directory where the ACME pathes are stored
+# ACME_DIR = <directory>
+# ACME_DIR="/acme"
+
+# Issuer domain.  This should be the FQDN of the ACME server
+# ISSUER_DOMAIN = <fqdn_of_ca>
+ISSUER_DOMAIN="@@ISSUER_DOMAIN@@"
+
+# Issuer URL path.  This is the URL path that will be the base
+# of the ACME server.  This needs to be coordinated with the web
+# server.
+# ISSUER_URL = <full URL base for ACME requests>
+ISSUER_URL="https://${ISSUER_DOMAIN}/acme"
+
+# Issuer email.  Contact Email of the ACME issuer.
+# ISSUER_EMAIL = <email_address>
+#ISSUER_EMAIL="admin@${ISSUER_DOMAIN}"
+ISSUER_EMAIL="@@ISSUER_EMAIL@@"
+
+# Nonce expire time in seconds.
+# NONCE_EXPIRE = <seconds>
+#NONCE_EXPIRE=300
+
+# Maximum certificate time to allow in days.
+# MAX_CERT_DAYS = <days>
+# MAX_CERT_DAYS=90
+
+# Client Retry timeout.  Time to send to client to retry challenge
+# question in seconds.
+# CLIENT_RETRY = <seconds>
+# CLIENT_RETRY=5
+
+# Order expire time.  The max time to allow an order to be valid.
+# ORDER_EXPIRE = <seconds>
+#ORDER_EXPIRE=300
+
+# Helper program.  This program is how the ACME server signs/revokes the
+# requests/certs from the client.
+# CA_HELPER = <full_path_and_program_name>
+#CA_HELPER="/cgi-bin/ACME_helper.sh"
+
+# Verify timeout.  The time in seconds that a verify attempt should wait.
+# VERIFY_TIMEOUT = <seconds>
+#VERIFY_TIMEOUT=5
+#VERIFY_TIMEOUT=1
+
+# Verify retries.  The number of time a verify attempt should try before
+# concluding the verify has failed.
+# VERIFY_RETRIES = <#>
+#VERIFY_RETIRES=1
+
+# Verify delay.  The number of seconds between verify attepts that the ACME
+# server should sleep.
+# VERIFY_DELAY = <seconds>
+# VERIFY_DELAY=1

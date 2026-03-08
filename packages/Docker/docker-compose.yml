@@ -1,0 +1,15 @@
+#
+---
+services:
+  acmecgi:
+    image: acmecgi:0.1
+    ports:
+      - "2931:8080/tcp"
+      - "12345:9995/udp"
+    env_file:
+      - .env
+    volumes:
+      - ./pca:/app/pca
+      - ./logs:/app/logs
+      - ./config:/app/config
+
