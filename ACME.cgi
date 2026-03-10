@@ -43,6 +43,7 @@ DNSLOOKUP=$(which host)
 HTTPLOOKUP=$(which ftp)
 SLEEP=$(which sleep)
 PRINTF=$(which printf)
+UNAME=$(which uname)
 DEVNUL="/tmp/acme.discard"
 
 # --- GLOBAL VARS ---
@@ -164,27 +165,53 @@ clean_content() {
 }
 
 rfc3339_to_epoch() {
+	local _e
 	if [ -z "$1" ]; then
 		echo "0"
+		return
 	fi
-	local _e=`${DATE} -j -f "%Y-%m-%dT%H:%M:%S%z" +"%s" "$1"`
+	case $(${UNAME}) in
+		Linux)
+			_e=`${DATE} +"%s" -d "$1"`
+			;;
+		*)
+			_e=`${DATE} -j -f "%Y-%m-%dT%H:%M:%S%z" +"%s" "$1"`
+			;;
+	esac
 	if [ -z "${_e}" ]; then
 		echo "0"
 	fi
 	echo "${_e}"
 }
 epoch_to_rfc3339() {
+	local _o
 	if [ -z "$1" ]; then
-		echo "0"
+		echo ""
+		return
 	fi
+	case $(${UNAME}) in
+		Linux)
+			_e=`${DATE} +"%Y-%m-%dT%H:%M:%SZ" -d "@$1"`
+			;;
+		*)
+			_o=`${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%SZ"`
+			;;
+	esac
 #	local _o=`${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%S%z"`
-	local _o=`${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%SZ"`
 	echo "${_o}"
 }
 
 get_epoch() {
-	local _n=`${DATE} -j +"%s"`
-	echo "${_n}"
+	local _e
+	case $(${UNAME}) in
+		Linux)
+			_e=`${DATE} +"%s"`
+			;;
+		*)
+			_e=`${DATE} -j +"%s"`
+			;;
+	esac
+	echo "${_e}"
 }
 
 _der_len() {
@@ -1219,7 +1246,7 @@ handle_directory() {
   "newOrder": "'${ISSUER_URL}'/order",
   "newAuthz": "'${ISSUER_URL}'/authz",
   "revokeCert": "'${ISSUER_URL}'/revoke",
-  "keyChange": "'${ISSUER_URL}'/keychange",
+  "keyChange": "'${ISSUER_URL}'/keychange"
 }'
 #  "renewalInfo": "'${ISSUER_URL}'/renewal-info"
 	return_result 200 "OK"
