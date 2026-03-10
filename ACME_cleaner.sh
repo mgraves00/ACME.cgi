@@ -43,18 +43,39 @@ find_conf() {
     echo ""
 }
 
+get_epoch() {
+	local _e
+	case `${UNAME}` in
+		Linux)
+			_e=$(${DATE} +"%s")
+			;;
+		*)
+			_e=$(${DATE} -j +"%s")
+			;;
+	esac
+	echo "${_e}"
+}
+
 rfc3339_to_epoch() {
+	local _e
 	if [ -z "$1" ]; then
 		echo "0"
 	fi
-	local _e=`${DATE} -j -f "%Y-%m-%dT%H:%M:%S%z" +"%s" "$1"`
+	case `${UNAME}` in
+		Linux)
+			_e=`${DATE} +"%s" -d "$1"`
+			;;
+		*)
+			_e=`${DATE} -j -f "%Y-%m-%dT%H:%M:%S%z" +"%s" "$1"`
+			;;
+	esac
 	if [ -z "${_e}" ]; then
 		echo "0"
 	fi
 	echo "${_e}"
 }
 
-NOW=$(${DATE} -j +"%s")
+NOW=`get_epoch`
 
 conf=`find_conf`
 if [ -z "$conf" ]; then
