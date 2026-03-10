@@ -1874,8 +1874,8 @@ fi
 # --- CONFIG ---
 # no defaults
 ISSUER_DOMAIN=${ISSUER_DOMAIN:-""}
-ISSUER_URL=${ISSUER_URL:-""}
 ISSUER_EMAIL=${ISSUER_EMAIL:-""}
+ISSUER_URL=${ISSUER_URL:-"https://${ISSUER_DOMAIN}/acme"}
 # has defaults
 LOG_FILE=${LOG_FILE:-"/logs/acme.log"}
 ACME_DIR=${ACME_DIR:-"/acme"}
@@ -1891,9 +1891,16 @@ CA_HELPER=${CA_HELPER:-"/cgi-bin/ACME_helper.sh"}
 DEBUG=${DEBUG:-0}
 DEVNUL=${DEVNUL:-"/tmp/acme-stderr.out"}
 
-if [ -z "${ISSUER_DOMAIN}" -o -z "${ISSUER_URL}" -o -z "${ISSUER_EMAIL}" ]; then
+if [ -z "${ISSUER_DOMAIN}" -o -z "${ISSUER_EMAIL}" ]; then
 	echo "Status: 500 incomplete config"
 	exit 1
+fi
+
+# If HTTP_HOST is set, build the URL from it as it will
+# handle any name:port.  This allows for loadbalancing
+# and hosting on different port than 443
+if [ ! -z "${HTTP_HOST}" ]; then
+	ISSUER_URL="https://${HTTP_HOST}/acme"
 fi
 
 # send all stderr to DEVNUL file
