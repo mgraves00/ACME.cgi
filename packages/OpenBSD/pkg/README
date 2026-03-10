@@ -1,0 +1,41 @@
++-------------------------------------------------------------------------------
+| Running ${PKGSTEM} on OpenBSD
++-------------------------------------------------------------------------------
+
+In cases where ACME.cgi is to be used in a chroot environment (such as when running
+behind webserver) there are several programs that are required.
+
+# create some directories
+install -d -m 1755 -o root -g wheel /var/www/tmp
+install -d -m 0755 -o root -g wheel /var/www/bin
+install -d -m 0755 -o root -g wheel /var/www/var/run
+# acme helper programs
+install -c -m 0555 -o root -g bin /bin/cat /var/www/bin/cat
+install -c -m 0555 -o root -g bin /bin/sleep /var/www/bin/sleep
+install -c -m 0555 -o root -g bin /bin/rm /var/www/bin/rm
+install -c -m 0555 -o root -g bin /usr/bin/cut /var/www/bin/cut
+install -c -m 0555 -o root -g bin /usr/bin/mktemp /var/www/bin/mktemp
+install -c -m 0555 -o root -g bin /usr/bin/host /var/www/bin/host
+install -c -m 0555 -o root -g bin /usr/bin/ftp /var/www/bin/ftp
+install -c -m 0555 -o root -g bin /usr/bin/fold /var/www/bin/fold
+install -c -m 0555 -o root -g bin /usr/bin/od /var/www/bin/od
+install -c -m 0555 -o root -g bin /usr/bin/openssl /var/www/bin/openssl
+install -c -m 0555 -o root -g bin /usr/bin/printf /var/www/bin/printf
+install -c -m 0555 -o root -g bin /usr/bin/wc /var/www/bin/wc
+install -c -m 0555 -o root -g bin /usr/local/bin/jq /var/www/bin/jq
+# setup libraries
+install -c -m 0644 -o root -g bin /usr/lib/libc.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libm.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libz.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libutil.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libssl.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libcrypto.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libtls.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libssl.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libedit.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libcurses.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/lib/libpthread.so.* /var/www/usr/lib
+install -c -m 0644 -o root -g bin /usr/local/lib/libjq.so.* /var/www/usr/local/lib
+install -c -m 0644 -o root -g bin /usr/local/lib/libonig.so.* /var/www/usr/local/lib
+# refresh ld.hints
+chroot /var/www ldconfig -v -s /usr/lib /usr/local/lib

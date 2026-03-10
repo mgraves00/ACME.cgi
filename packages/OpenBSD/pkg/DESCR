@@ -1,0 +1,3 @@
+ACME.cgi is a CGI script that implements RFC8555 ACME standard for certificate
+issuance.  It utilizes an external program for the certificate request signing
+and certificate revocation.
