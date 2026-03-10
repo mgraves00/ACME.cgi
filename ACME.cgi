@@ -27,23 +27,23 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # --- EXTERNAL PROGS ---
-WC=$(which wc)
-RM=$(which rm)
 JQ=$(which jq)
-CUT=$(which cut)
-CAT=$(which cat)
-TR=$(which tr)
-DATE=$(which date)
-SED=$(which sed)
 OD=$(which od)
+RM=$(which rm)
+TR=$(which tr)
+WC=$(which wc)
+CAT=$(which cat)
+CUT=$(which cut)
+SED=$(which sed)
+DATE=$(which date)
 FOLD=$(which fold)
 OSSL=$(which openssl)
+SLEEP=$(which sleep)
+UNAME=$(which uname)
+PRINTF=$(which printf)
 MKTEMP=$(which mktemp)
 DNSLOOKUP=$(which host)
 HTTPLOOKUP=$(which ftp)
-SLEEP=$(which sleep)
-PRINTF=$(which printf)
-UNAME=$(which uname)
 DEVNUL="/tmp/acme.discard"
 
 # --- GLOBAL VARS ---
