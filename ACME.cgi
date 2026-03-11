@@ -395,7 +395,8 @@ sig_to_der() {
 }
 
 extract_id() {
-	local _r=${REQUEST_URI##*/}
+	local _id=${1:-${REQUEST_URI}}
+	local _r=${_id##*/}
 	local _cmp=`echo -n "$_r" | ${SED} -nr '/^[a-zA-Z0-9_-]+$/p'`
 	if [ -z "${_cmp}" ]; then
 		log_debug "extract_id: error id: '$_r'"
@@ -625,7 +626,8 @@ validate_jws() {
 		if [ -z "${_kid}" ]; then
 			return 1
 		fi
-		_acct=${_kid##*/}
+#		_acct=${_kid##*/}
+		_acct=`extract_id "${_kid}"`
 	fi
 	if [ -z "${_acct}" ]; then
 		# account not found
@@ -1245,13 +1247,14 @@ verify_acct() {
 			return 1
 		fi
 	else
-		acct=${acct##*/acct/}
-		echo "${acct}" | grep -qE '^[a-zA-Z0-9_-]+$'
-		if [ $? -ne 0 ]; then
-			log_debug "verify_acct: error id: '$_r'"
-			echo "malformed" "invalid id"
-			return 1
-		fi
+		acct=`extract_id "${acct}"`
+#		acct=${acct##*/acct/}
+#		echo "${acct}" | grep -qE '^[a-zA-Z0-9_-]+$'
+#		if [ $? -ne 0 ]; then
+#			log_debug "verify_acct: error id: '$_r'"
+#			echo "malformed" "invalid id"
+#			return 1
+#		fi
 	fi
 	log_debug "verify_acct: cound account ${acct}"
 	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
