@@ -13,7 +13,7 @@ To run the docker
 mkdir ./config
 mkdir ./data
 mkdir ./logs
-docker run -d --rm --env-file .env -p "8080:8080/tcp" -p "9995:9995/udp" -v "./config:/app/config" -v "./data:/app/pca" -v "./logs:/app/logs" acmecgi:latest
+docker run -d --rm --env-file .env -p "8443:8443/tcp" -v "./config:/app/config" -v "./data:/app/data" -v "./logs:/app/logs" acmecgi:latest
 '''
 
 ## Docker compose

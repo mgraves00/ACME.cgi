@@ -2,13 +2,13 @@
 
 # Certificate Authority name used by PCA. (no default)
 # CA_NAME = <name of CA>
-CA_NAME="@@CA_NAME@@"
+CA_NAME=@@CA_NAME@@
 
 # The root directory of the PCA environment.  If ACME.cgi is running in a 
 # CHROOT environment, then this is rooted at the same place.
 # default: /etc/pca
 # PCA_ROOT = <path to PCA directory>
-#PCA_ROOT="/etc/pca"
+PCA_ROOT=@@PCA_ROOT@@
 
 # The number of days to sign a cert for.  The days can be overridden by
 # ACME.cgi when making a signing request. In the case that it isn't
