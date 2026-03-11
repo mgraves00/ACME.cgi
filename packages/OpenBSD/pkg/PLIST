@@ -1,0 +1,8 @@
+cgi-bin/ACME.cgi
+cgi-bin/ACME_cleaner.sh
+cgi-bin/ACME_helper.sh
+etc/
+etc/ACME.conf.example
+etc/ACME_helper.conf.example
+@cwd ${LOCALBASE}/share/doc/pkg-readmes
+${PKGSTEM}

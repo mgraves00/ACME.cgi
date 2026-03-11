@@ -1,0 +1,2 @@
+@cwd ${LOCALBASE}/share/doc/pkg-readmes
+${PKGSTEM}
