@@ -394,6 +394,17 @@ sig_to_der() {
 	echo -n "${_s}" | _hex_to_bin
 }
 
+extract_id() {
+	local _r=${REQUEST_URI##*/}
+	local _cmp=`echo -n "$_r" | ${SED} -nr '/^[a-zA-Z0-9_-]+$/p'`
+	if [ -z "${_cmp}" ]; then
+		log_debug "extract_id: error id: '$_r'"
+		return_error 400 "malformed" "invalid id"
+		# no return
+	fi
+	echo "${_r}"
+}
+
 read_content() {
 	local _sz
 	local _encstr
@@ -1208,7 +1219,14 @@ verify_acct() {
 		fi
 	else
 		acct=${acct##*/acct/}
+		echo "${acct}" | grep -qE '^[a-zA-Z0-9_-]+$'
+		if [ $? -ne 0 ]; then
+			log_debug "verify_acct: error id: '$_r'"
+			echo "malformed" "invalid id"
+			return 1
+		fi
 	fi
+	log_debug "verify_acct: cound account ${acct}"
 	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
 		log "ERROR" "verify_acct: Account ${acct} does not exist."
 		echo "accountDoesNotExist" "cannot find existing account"
@@ -1272,6 +1290,7 @@ handle_account() {
 	local ore
 	local contacts
 	make_nonce || return_error 500 "badNonce" "failed to create new nonce"
+	# check for account without a trailing slash "/".  if true, this is a new request
 	acct=${REQUEST_URI##*/acct}	
 	if [ -z "${acct}" ]; then
 		# no account info sent
@@ -1320,13 +1339,16 @@ handle_account() {
 	else
 		# existing account request
 		log_debug "handle_account: account update request"
-		acct=${acct##/}
+#		acct=${acct##/}
+		acct=`verify_acct` || return_error 400 ${acct}
+#XXX
+#		acct=`extract_id`
 		log_debug "handle_account: account ${acct}"
-		if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
-			log "ERROR" "Account ${acct} does not exist."
-			return_error 400 "accountDoesNotExist" "cannot find existing accout"
-			# no return
-		else
+#		if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
+#			log "ERROR" "Account ${acct} does not exist."
+#			return_error 400 "accountDoesNotExist" "cannot find existing accout"
+#			# no return
+#		else
 			# check the account status
 			local status
 			status=`query_account_field ${acct} '.status'` || return_error 404 "serverInternal" "missing account info"
@@ -1363,7 +1385,7 @@ handle_account() {
 			return_result 200 "OK"
 			# no return
 		fi
-	fi
+#	fi
 	return_error 400 "serverInternal" "internal error when processing account"
 	# no return
 }
@@ -1469,7 +1491,6 @@ handle_order() {
 	notAfter=`epoch_to_rfc3339 ${max}`
 	make_nonce
 	set_header "Location: ${ISSUER_URL}/order/${order}"
-#XXX since we do not do any authz, we immediatly goto a ready state
 	_BODY='{
   "status": "pending",
   "expires": "'${expire}'",
@@ -1518,7 +1539,8 @@ handle_authz() {
 #		fi
 #	fi
 #XXX handle 'deactivate' requests
-	local order=${REQUEST_URI##*/authz/}
+#	local order=${REQUEST_URI##*/authz/}
+	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "authz: no order specified"
 		return_error 400 "malformed" "no order in url"
@@ -1594,7 +1616,8 @@ handle_challenge() {
 #			# no return
 #		fi
 #	fi
-	local order=${REQUEST_URI##*/challenge/}
+#	local order=${REQUEST_URI##*/challenge/}
+	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "challenge: no order specified"
 		return_error 400 "malformed" "no order in url"
@@ -1686,7 +1709,8 @@ handle_finalize() {
 #			# no return
 #		fi
 #	fi
-	local order=${REQUEST_URI##*/finalize/}
+#	local order=${REQUEST_URI##*/finalize/}
+	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "finalize: no order specified"
 		return_error 400 "malformed" "no order in url"
@@ -1778,7 +1802,8 @@ handle_certificate() {
 #			# no return
 #		fi
 #	fi
-	local order=${REQUEST_URI##*/certificate/}
+#	local order=${REQUEST_URI##*/certificate/}
+	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "certificate: no order specified"
 		return_error 400 "malformed" "no order in url"
