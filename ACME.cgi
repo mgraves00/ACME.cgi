@@ -58,7 +58,7 @@ find_conf() {
 	for _f in "/etc/ACME.conf" "/app/config/ACME.conf"; do
 		if [ -f "${_f}" ]; then
 #			echo "using config: ${_f}" >&2
-			echo ${_f}
+			echo "${_f}"
 			return
 		fi
 	done
@@ -195,9 +195,9 @@ epoch_to_rfc3339() {
 			;;
 		*)
 			_o=`${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%SZ"`
+#			_o=`${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%S%z"`
 			;;
 	esac
-#	local _o=`${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%S%z"`
 	echo "${_o}"
 }
 
@@ -229,8 +229,8 @@ _der_int() {
     local hex=$1
 	local len
 	# remove leading zero bytes
-	while [ "${#hex}" -gt 2 ] && [ $(echo -n ${hex} | cut -c1-2) == "00" ]; do
-		hex=$(echo -n ${hex} | cut -c3-)
+	while [ "${#hex}" -gt 2 ] && [ $(echo -n "${hex}" | cut -c1-2) == "00" ]; do
+		hex=$(echo -n "${hex}" | cut -c3-)
 	done
 	# if high bit set, prepend 00 so integer stays positive
 	[ $(( 0x$(echo -n "$hex" | cut -c1-2) )) -ge 128 ] && hex="00${hex}"
@@ -432,7 +432,7 @@ read_content() {
 			return_error  413 "malformed" "error decoding b64"
 			# no return
 		fi
-		echo ${_encstr} >${_REQ_FILE}
+		echo "${_encstr}" >${_REQ_FILE}
 		if [ $? -ne 0 ]; then
 			log "ERROR" "read_content: error saving content"
 			return_error  413 "malformed" "error saving request"
@@ -487,7 +487,7 @@ set_file_field() {
 		log_debug "set_file_field: error setting field ${_f} from ${_file}"
 		return 1
 	fi
-	echo ${_res} >${_file}
+	echo "${_res}" >${_file}
 	if [ $? -ne 0 ]; then
 		log_debug "set_file_field: error saving file ${_file}"
 	fi
@@ -514,7 +514,7 @@ query_file_field() {
 		echo ""
 		return 1
 	fi
-	echo ${_res}
+	echo "${_res}"
 	return 0
 }
 
@@ -526,7 +526,7 @@ query_req_field() {
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
-	echo $_res
+	echo "${_res}"
 	return 0
 }
 
@@ -539,7 +539,7 @@ query_account_field() {
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
-	echo $_res
+	echo "${_res}"
 	return 0
 }
 
@@ -552,7 +552,7 @@ query_order_field() {
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
-	echo $_res
+	echo "${_res}"
 	return 0
 }
 
@@ -565,7 +565,7 @@ query_challenge_field() {
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
-	echo $_res
+	echo "${_res}"
 	return 0
 }
 
@@ -762,6 +762,20 @@ set_header() {
 	fi
 }
 
+valid_target() {
+	local _t=$1
+	local _i
+#XXX need to make more dynamic
+#XXX resolve the host name
+#XXX check for rfc1918 and link-local addresses
+	for _i in "127.0.0.1 localhost 169.254.169.254"; do
+		if [ "${_i}" == "${_t}" ]; then
+			return 1
+		fi
+	done
+	return 0
+}
+
 process_revoke() {
 #	local _o=$1
 	local _tmpfile
@@ -831,7 +845,7 @@ jwk_to_acct() {
 		return 1
 	fi
 	_a=`echo -n "${_a}" | ${TR} -d " " | ${OSSL} dgst -sha256 | cut -f2 -d' '`
-	echo ${_a}
+	echo "${_a}"
 	return 0
 }
 
@@ -853,8 +867,8 @@ gen_thumbprint() {
 		echo "failed to retrieve jwk"
 		return 1
 	fi
-	_ret=`echo -n ${_jwk} | ${TR} -d " " | ${OSSL} dgst -sha256 -binary | ${OSSL} base64 -a | url_protect`
-	echo ${_ret}
+	_ret=`echo -n "${_jwk}" | ${TR} -d " " | ${OSSL} dgst -sha256 -binary | ${OSSL} base64 -a | url_protect`
+	echo "${_ret}"
 }
 
 # See section 8.1
@@ -979,7 +993,7 @@ process_challenge() {
 		log "ERROR" "process_challenge: failed to set state of order ${_order} to processing"
 		exit 0
 	fi
-	_acct=`echo ${_order} | cut -f1 -d"_"`
+	_acct=`echo "${_order}" | cut -f1 -d"_"`
 	challenges=`query_challenge_field "${_order}" '.challenges[] | "\(.type):\(.status):\(.token)" // "" '`
 	if [ -z "${challenges}" ]; then
 		log "ERROR" "process_challenge: no challenges found for order ${_order}"
@@ -990,12 +1004,18 @@ process_challenge() {
 		log "ERROR" "process_challenge: no target found in indentifer for order ${_order}"
 		exit 0
 	fi
-#	log_debug "process_challenge: challenges: ${challenges} for target ${target}"
+	# sanitize target
+	valid_target "${target}"
+	if [ $? -ne 0 ]; then
+		log "ERROR" "process_challenge: target ${target} on invalid list for order ${_order}"
+		exit 0
+	fi
+	log_debug "process_challenge: challenges: ${challenges} for target ${target}"
 	local i=0	
 	for chal in ${challenges}; do
-		local typ=`echo $chal |cut -f1 -d:`
-		local chal_status=`echo $chal |cut -f2 -d:`
-		local token=`echo $chal |cut -f3 -d:`
+		local typ=`echo "$chal" |cut -f1 -d:`
+		local chal_status=`echo "$chal" |cut -f2 -d:`
+		local token=`echo "$chal" |cut -f3 -d:`
 		if [ "${chal_status}" == "valid" ]; then
 			# already validated the challenge...
 			log_debug "process_challenge: challenge already validated. skipping"
@@ -1073,7 +1093,7 @@ process_challenge() {
 		log "ERROR" "process_challenge: error processing order"
 #	else
 #		local _t=$(${CAT} ${_REQ_FILE})
-#		echo ${_t} | ${JQ} -r '.status = "valid"' >${_REQ_FILE}
+#		echo "${_t}" | ${JQ} -r '.status = "valid"' >${_REQ_FILE}
 #		if [ $? -ne 0 ]; then
 #			log "ERROR" "process_challenge error: cannot set status to valid"
 #		fi
@@ -1109,7 +1129,7 @@ return_result() {
 	echo "Status: ${_hc} $(hc_string ${_hc})"
 	# output the headers
 	for _h in "${_HEADERS[@]}"; do
-		echo ${_h}
+		echo "${_h}"
 	done
 # XXX this breaks things
 #	echo "Content-Length: ${#_BODY}"
@@ -1117,7 +1137,7 @@ return_result() {
 	# output a body if it exists
 	if [ ${#_BODY} -gt 0 ]; then
 #log_debug "body=${_BODY}"
-		echo -n ${_BODY}
+		echo -n "${_BODY}"
 	fi
 	clean_content
 	exit 0
@@ -1314,7 +1334,7 @@ handle_account() {
 			fi
 			log_debug "handle_account: creating new account"
 			_BODY='{ "status": "valid", "orders": "'${ISSUER_URL}'/orders/'${acct}'", "termsOfServiceAgreed": "'$(query_req_field '.payload | .termsOfServiceAgreed')'", "contact": '$(query_req_field '.payload | .contact')', "jwk": '$(query_req_field '.protected | .jwk')' }'
-			echo $_BODY > ${ACME_DIR}/accts/${acct}
+			echo "$_BODY" > ${ACME_DIR}/accts/${acct}
 			if [ $? -ne 0 ]; then
 				log_debug "handle_account: failed to save account"
 				log "ERROR" "failed to save account ${acct}"
@@ -1430,7 +1450,7 @@ handle_order() {
 	fi
 	# verify we can handle the authz
 	for _id in ${identifiers}; do
-		local t=`echo ${_id} | ${CUT} -f1 -d:`
+		local t=`echo "${_id}" | ${CUT} -f1 -d:`
 		case $t in
 			dns) ;;
 			*)
@@ -1458,7 +1478,7 @@ handle_order() {
   "authorizations" : '${authorizations}',
   "finalize": "'${ISSUER_URL}'/finalize/'${acct}'_'${order}'"
 }'
-	echo ${_BODY} > ${ACME_DIR}/orders/${acct}_${order}
+	echo "${_BODY}" > ${ACME_DIR}/orders/${acct}_${order}
 	if [ $? -ne 0 ]; then
 		_BODY=""
 		return_result 500 "error saving order"
@@ -1515,7 +1535,7 @@ handle_authz() {
 #{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${order}'", "status": "pending", "token": "'${token}'" },
 		_BODY='{ "status": "pending", "expires": "'${expires}'", "identifier": '${identifiers}', "challenges": '${challenges}' }'
 		# save challenge document
-		echo $_BODY > ${ACME_DIR}/challenges/${order}
+		echo "$_BODY" > ${ACME_DIR}/challenges/${order}
 		if [ $? -ne 0 ]; then
 			return_error 500 "serverInternal" "error saving challenge object"
 			# no return
@@ -1689,7 +1709,7 @@ handle_certificate() {
 		echo "Status: 200 $(hc_string ${_hc})"
 		# output the headers
 		for _h in "${_HEADERS[@]}"; do
-			echo ${_h}
+			echo "${_h}"
 		done
 		echo
 		# output a body if it exists
