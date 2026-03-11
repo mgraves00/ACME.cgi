@@ -87,3 +87,6 @@ behind webserver) there are several programs that are required.
 	rcctl enable httpd
 	rcctl start httpd
 
+# Update newsyslog to rotate log file.  Add the following
+	/var/www/logs/acme.log                 644  7     250  *     Z "pkill -USR1 -u root -U root -x httpd"
+
