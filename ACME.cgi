@@ -1296,7 +1296,6 @@ handle_account() {
 		# no account info sent
 		log_debug "handle_account: new account request"
 		# new account request
-#		acct=`query_req_field '.protected | .jwk' | ${OSSL} dgst -sha256 | cut -f2 -d' '`
 		acct=`jwk_to_acct`
 		if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
 			ore=`query_req_field '.payload | .onlyReturnExisting // ""'`
@@ -1339,53 +1338,44 @@ handle_account() {
 	else
 		# existing account request
 		log_debug "handle_account: account update request"
-#		acct=${acct##/}
 		acct=`verify_acct` || return_error 400 ${acct}
-#XXX
-#		acct=`extract_id`
 		log_debug "handle_account: account ${acct}"
-#		if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
-#			log "ERROR" "Account ${acct} does not exist."
-#			return_error 400 "accountDoesNotExist" "cannot find existing accout"
-#			# no return
-#		else
-			# check the account status
-			local status
-			status=`query_account_field ${acct} '.status'` || return_error 404 "serverInternal" "missing account info"
-			log_debug "handle_account: account status ${status}"
-			case "${status}" in
-				deactivated)
-					return_error "unauthorized" "account ${acct} is ${status}"
-					# no return
-					;;
-				valid)
-					# just fall thru
-					;;
-				*)
-					return_error "accountNotValid" "account ${acct} is ${status}"
-					# no return
-					;;
-			esac
-			# update account
-			status=`query_req_field '.payload | .status //""'`
-			if [ ! -z "${status}" ]; then
-				log_debug "handle_account: set account status to ${status}"
-				set_account_field "${acct}" '.status = "'${status}'"' || return_error 404 "serverInternal" "error updating account status"
-			else
-				local new_contact=`query_req_field '.payload | .contact // ""'`
-				log_debug "handle_account: set account contact to ${new_contact}"
-				if [ ! -z "${new_contact}" ]; then
-					set_account_field "${acct}" '.contact = "'${new_contact}'"' || return_error 404 "serverInternal" "error updating account contact"
-				fi
+		# check the account status
+		local status
+		status=`query_account_field ${acct} '.status'` || return_error 404 "serverInternal" "missing account info"
+		log_debug "handle_account: account status ${status}"
+		case "${status}" in
+			deactivated)
+				return_error "unauthorized" "account ${acct} is ${status}"
+				# no return
+				;;
+			valid)
+				# just fall thru
+				;;
+			*)
+				return_error "accountNotValid" "account ${acct} is ${status}"
+				# no return
+				;;
+		esac
+		# update account
+		status=`query_req_field '.payload | .status //""'`
+		if [ ! -z "${status}" ]; then
+			log_debug "handle_account: set account status to ${status}"
+			set_account_field "${acct}" '.status = "'${status}'"' || return_error 404 "serverInternal" "error updating account status"
+		else
+			local new_contact=`query_req_field '.payload | .contact // ""'`
+			log_debug "handle_account: set account contact to ${new_contact}"
+			if [ ! -z "${new_contact}" ]; then
+				set_account_field "${acct}" '.contact = "'${new_contact}'"' || return_error 404 "serverInternal" "error updating account contact"
 			fi
-			_BODY=$(${CAT} ${ACME_DIR}/accts/${acct})
-			log_debug "handle_account: account updated"
-			set_header "Location: ${ISSUER_URL}/acct/${acct}"
-			log "INFO" "Account ${acct} updated."
-			return_result 200 "OK"
-			# no return
 		fi
-#	fi
+		_BODY=$(${CAT} ${ACME_DIR}/accts/${acct})
+		log_debug "handle_account: account updated"
+		set_header "Location: ${ISSUER_URL}/acct/${acct}"
+		log "INFO" "Account ${acct} updated."
+		return_result 200 "OK"
+		# no return
+	fi
 	return_error 400 "serverInternal" "internal error when processing account"
 	# no return
 }
@@ -1398,17 +1388,6 @@ handle_orders() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-#	acct=${REQUEST_URI##*/orders}	
-#	if [ -z "${acct}" ]; then
-#		log_debug "handle_orders: cannot find account"
-#		return_error 400 "accountDoesNotExist" "cannot find existing accout"
-#		# no return
-#	fi
-#	status=`query_account_field ${acct} '.status'`
-#	if [ ${status} != "valid" ]; then
-#		return_error 401 "accountNotValid" "account is ${status}"
-#		# no return
-#	fi
 	olist=`${LS} -1r ${ACME_DIR}/orders/${acct}_* | ${JQ} -Rs '. | split("\n") | map(select (. != "")) | map("'${ISSUER_URL}'/order" + .) | { orders: .}'`
 	log_debug "handle_orders: orders ${olist}"
 	_BODY=${olist}
@@ -1427,27 +1406,6 @@ handle_order() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-#	acct=`query_req_field '.protected | .kid // ""'`
-#	if [ -z "${acct}" ]; then
-#		log "ERROR" "order: no kid found in request"
-#		return_error 400 "malformed" "cannot retreive kid from request"
-#		# no return
-#	fi
-#	acct=${acct##*/acct/}
-#	log_debug "handle_order: account ${acct}"
-#	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
-#		log "ERROR" "order: Account ${acct} does not exist."
-#		return_error 400 "accountDoesNotExist" "cannot find existing accout"
-#		# no return
-#	else
-#		# check the account status
-#		status=`query_account_field ${acct} '.status // ""'` || return_error 404 "serverInternal" "missing account info"
-#		log_debug "handle_order: account status ${status}"
-#		if [ "${status}" != "valid" ]; then
-#			return_error 401 "accountNotValid" "account ${acct} is ${status}"
-#			# no return
-#		fi
-#	fi
 	local raw_identifiers=`query_req_field '.payload | .identifiers'`
 	local identifiers=`query_req_field '.payload | .identifiers[] | "\(.type):\(.value)"'`
 	local notBefore=`query_req_field '.payload | .noBefore // ""'`
@@ -1517,29 +1475,7 @@ handle_authz() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-#	acct=`query_req_field '.protected | .kid // ""'`
-#	if [ -z "${acct}" ]; then
-#		log "ERROR" "authz: no kid found in request"
-#		return_error 400 "malformed" "cannot retreive kid from request"
-#		# no return
-#	fi
-#	acct=${acct##*/acct/}
-#	log_debug "handle_authz: account ${acct}"
-#	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
-#		log "ERROR" "authz: Account ${acct} does not exist."
-#		return_error 400 "accountDoesNotExist" "cannot find existing accout"
-#		# no return
-#	else
-#		# check the account status
-#		status=`query_account_field ${acct} '.status'` || return_error 404 "serverInternal" "missing account info"
-#		log_debug "handle_authz: account status ${status}"
-#		if [ "${status}" != "valid" ]; then
-#			return_error 401 "accountNotValid" "account ${acct} is ${status}"
-#			# no return
-#		fi
-#	fi
 #XXX handle 'deactivate' requests
-#	local order=${REQUEST_URI##*/authz/}
 	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "authz: no order specified"
@@ -1595,28 +1531,6 @@ handle_challenge() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-#	acct=`query_req_field '.protected | .kid // ""'`
-#	if [ -z "${acct}" ]; then
-#		log "ERROR" "challenge: no kid found in request"
-#		return_error 400 "malformed" "cannot retreive kid from request"
-#		# no return
-#	fi
-#	acct=${acct##*/acct/}
-#	log_debug "handle_challenge: account ${acct}"
-#	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
-#		log "ERROR" "challenge: Account ${acct} does not exist."
-#		return_error 400 "accountDoesNotExist" "cannot find existing accout"
-#		# no return
-#	else
-#		# check the account status
-#		status=`query_account_field ${acct} '.status // ""'` || return_error 404 "serverInternal" "missing account info"
-#		log_debug "handle_challenge: account status ${status}"
-#		if [ "${status}" != "valid" ]; then
-#			return_error 401 "accountNotValid" "account ${acct} is ${status}"
-#			# no return
-#		fi
-#	fi
-#	local order=${REQUEST_URI##*/challenge/}
 	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "challenge: no order specified"
@@ -1688,28 +1602,6 @@ handle_finalize() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-#	acct=`query_req_field '.protected | .kid // ""'`
-#	if [ -z "${acct}" ]; then
-#		log "ERROR" "finalize: no kid found in request"
-#		return_error 400 "malformed" "cannot retreive kid from request"
-#		# no return
-#	fi
-#	acct=${acct##*/acct/}
-#	log_debug "handle_challenge: account ${acct}"
-#	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
-#		log "ERROR" "finalize: Account ${acct} does not exist."
-#		return_error 400 "accountDoesNotExist" "cannot find existing accout"
-#		# no return
-#	else
-#		# check the account status
-#		status=`query_account_field ${acct} '.status // ""'` || return_error 404 "serverInternal" "missing account info"
-#		log_debug "handle_finalize: account status ${status}"
-#		if [ "${status}" != "valid" ]; then
-#			return_error 401 "accountNotValid" "account ${acct} is ${status}"
-#			# no return
-#		fi
-#	fi
-#	local order=${REQUEST_URI##*/finalize/}
 	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "finalize: no order specified"
@@ -1781,28 +1673,6 @@ handle_certificate() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-#	acct=`query_req_field '.protected | .kid // ""'`
-#	if [ -z "${acct}" ]; then
-#		log "ERROR" "certificate: no kid found in request"
-#		return_error 400 "malformed" "cannot retreive kid from request"
-#		# no return
-#	fi
-#	acct=${acct##*/acct/}
-#	log_debug "handle_certificate: account ${acct}"
-#	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
-#		log "ERROR" "certificate: Account ${acct} does not exist."
-#		return_error 400 "accountDoesNotExist" "cannot find existing accout"
-#		# no return
-#	else
-#		# check the account status
-#		status=`query_account_field ${acct} '.status // ""'` || return_error 404 "serverInternal" "missing account info"
-#		log_debug "handle_certificate: account status ${status}"
-#		if [ "${status}" != "valid" ]; then
-#			return_error 401 "accountNotValid" "account ${acct} is ${status}"
-#			# no return
-#		fi
-#	fi
-#	local order=${REQUEST_URI##*/certificate/}
 	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "certificate: no order specified"
@@ -1839,34 +1709,6 @@ handle_revoke() {
 	local status
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	acct=`verify_acct` || return_error 400 ${acct}
-#	acct=`query_req_field '.protected | .kid // ""'`
-#	if [ -z "${acct}" ]; then
-#		log "ERROR" "revoke: no kid found in request"
-#		return_error 400 "malformed" "cannot retreive kid from request"
-#		# no return
-#	fi
-#	acct=${acct##*/acct/}
-#	log_debug "handle_revoke: account ${acct}"
-#	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
-#		log "ERROR" "revoke: Account ${acct} does not exist."
-#		return_error 400 "accountDoesNotExist" "cannot find existing accout"
-#		# no return
-#	else
-#		# check the account status
-#		status=`query_account_field ${acct} '.status // ""'` || return_error 404 "serverInternal" "missing account info"
-#		log_debug "handle_revoke: account status ${status}"
-#		if [ "${status}" != "valid" ]; then
-#			return_error 401 "accountNotValid" "account ${acct} is ${status}"
-#			# no return
-#		fi
-#	fi
-#	local order=${REQUEST_URI##*/revoke/}
-#	if [ -z "$order" ]; then
-#		log "ERROR" "revoke: no order specified"
-#		return_error 400 "malformed" "no order in url"
-#		# no return
-#	fi
-#	log_debug "handle_revoke: order ${order}"
 	_ret=`process_revoke ${acct}`
 	case "$?" in
 		1) #alreadyRevoked
