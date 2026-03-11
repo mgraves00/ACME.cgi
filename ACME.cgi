@@ -709,14 +709,21 @@ validate_jws() {
 			log_debug "validate_jws: failed to save pem file"
 			return 1
 		fi
-#	else
-#		local n=`query_req_field '.protected | .jwk'`
-#		local o=`query_account_field "${_acct}" '.jwk'`
-#		if [ "$n" != "$o" ]; then
-#			echo "n: $n" >&2
-#			echo "o: $n" >&2
-#			return_error 500 "serverInternal" "old and new jwk don't match"
-#		fi
+	else
+		# Check to see if jwk was provided,
+		# if it was compare with stored version.
+		# If not we have already verified
+		# the jwk and kid so just pass thru.
+		local n o
+		n=`query_req_field '.protected | .jwk // ""'`
+		if [ ! -z "$n" ]; then
+			o=`query_account_field "${_acct}" '.jwk'`
+			if [ "$n" != "$o" ]; then
+				echo "n: $n" >&2
+				echo "o: $o" >&2
+				return_error 500 "serverInternal" "old and new jwk don't match"
+			fi
+		fi
 	fi
 	_sig=`query_req_field '.signature'`
 	if [ $? -ne 0 ]; then
