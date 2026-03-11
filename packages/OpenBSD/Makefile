@@ -14,6 +14,7 @@ PERMIT_DISTFILES = Yes
 GH_ACCOUNT 	= mgraves00
 GH_PROJECT 	= ACME.cgi
 GH_TAGNAME 	= v${VERSION}
+#GH_COMMIT	= 3fce5176be51c7342e77b646e0274c2fa770f1ca
 
 CONFIG_STYLE = none
 NO_BUILD	= Yes
@@ -26,6 +27,7 @@ PREFIX =	${VARBASE}/www
 SUBST_VARS = VARBASE
 
 do-install:
+	${INSTALL_SCRIPT_DIR} ${PREFIX}/cgi-bin
 	${INSTALL_SCRIPT} ${WRKSRC}/ACME.cgi ${PREFIX}/cgi-bin/
 	${INSTALL_SCRIPT} ${WRKSRC}/ACME_helper.sh ${PREFIX}/cgi-bin/
 	${INSTALL_SCRIPT} ${WRKSRC}/ACME_cleaner.sh ${PREFIX}/cgi-bin/
