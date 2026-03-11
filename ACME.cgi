@@ -43,7 +43,7 @@ UNAME=$(which uname)
 PRINTF=$(which printf)
 MKTEMP=$(which mktemp)
 DNSLOOKUP=$(which host)
-HTTPLOOKUP=$(which ftp)
+HTTPLOOKUP=$(which curl)
 DEVNUL="/tmp/acme.discard"
 
 # --- GLOBAL VARS ---
@@ -881,7 +881,8 @@ process_http01_request() {
 	fi
 	_tmpfile=`${MKTEMP} -t "acme-challenge-${_host}.XXXXXXXX"` || return 99
 	while [ ${_retry} -gt 0 ]; do
-		_resp=`${HTTPLOOKUP} -w ${_timout} -U "ACME.cgi challenge test" -o ${_tmpfile} "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1`
+#		_resp=`${HTTPLOOKUP} -w ${_timout} -U "ACME.cgi challenge test" -o ${_tmpfile} "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1`
+		_resp=`${HTTPLOOKUP} --silent --connect-timeout ${_timout} -A "ACME.cgi challenge test" -o ${_tmpfile} "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1`
 		if [ $? -ne 0 ]; then
 			log_debug "process_http01_request: error looking up record. ${_resp}"
 			echo '{\"type\":\"connection",\"desc\":\"'${_resp}'\"}'
