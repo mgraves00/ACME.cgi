@@ -72,7 +72,9 @@ log_debug() {
 
 log() {
 	local _sev=$1; shift;
-    echo "$(${DATE}) [${_sev}] $*" >>"$LOG_FILE"
+	local _d=`get_epoch`
+	local _h=${REMOTE_ADDR:-"unknown"}
+    echo "$(epoch_to_rfc3339 "${_d}") [${_sev}] ${_h} $*" >>"$LOG_FILE"
 }
 
 hc_string() {
@@ -1372,7 +1374,7 @@ handle_account() {
 	acct=${REQUEST_URI##*/acct}	
 	if [ -z "${acct}" ]; then
 		# no account info sent
-		log_debug "handle_account: new account request"
+		log "INFO" "account: new request"
 		# new account request
 		acct=`jwk_to_acct`
 		if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
@@ -1415,22 +1417,24 @@ handle_account() {
 		fi
 	else
 		# existing account request
-		log_debug "handle_account: account update request"
 		acct=`verify_acct` || return_error 400 ${acct}
-		log_debug "handle_account: account ${acct}"
+		log "INFO" "account: update request ${acct}"
 		# check the account status
 		local status
 		status=`query_account_field ${acct} '.status'` || return_error 404 "serverInternal" "missing account info"
 		log_debug "handle_account: account status ${status}"
 		case "${status}" in
 			deactivated)
+				log "ERROR" "account state deactivated"
 				return_error 400 "unauthorized" "account ${acct} is ${status}"
 				# no return
 				;;
 			valid)
+				log "INFO" "account state valid"
 				# just fall thru
 				;;
 			*)
+				log "ERROR" "account state unknown: ${status}"
 				return_error 404 "accountNotValid" "account ${acct} is ${status}"
 				# no return
 				;;
@@ -1440,25 +1444,28 @@ handle_account() {
 		if [ ! -z "${status}" ]; then
 			if [ "${status}" != "deactivated" ]; then
 				# only permit client to deactivate account
+				log "ERROR" "account deactivated: update denied"
 				return_error 400 "unauthorized" "invalid request to set status to ${status}"
 				# no return
 			fi
 			log_debug "handle_account: set account status to ${status}"
 			set_account_field "${acct}" '.status = "'${status}'"' || return_error 404 "serverInternal" "error updating account status"
+			log "INFO" "account status updated to ${status}"
 		else
 			local new_contact=`query_req_field '.payload | .contact // ""'`
 			log_debug "handle_account: set account contact to ${new_contact}"
 			if [ ! -z "${new_contact}" ]; then
 				set_account_field "${acct}" '.contact = "'${new_contact}'"' || return_error 404 "serverInternal" "error updating account contact"
+				log "INFO" "account contacts updated"
 			fi
 		fi
 		_BODY=$(${CAT} ${ACME_DIR}/accts/${acct})
-		log_debug "handle_account: account updated"
 		set_header "Location: ${ISSUER_URL}/acct/${acct}"
-		log "INFO" "Account ${acct} updated."
+		log "INFO" "account ${acct} updated."
 		return_result 200 "OK"
 		# no return
 	fi
+	log "ERROR" "account ${acct} process error."
 	return_error 400 "serverInternal" "internal error when processing account"
 	# no return
 }
@@ -1474,6 +1481,7 @@ handle_orders() {
 	olist=`${LS} -1r ${ACME_DIR}/orders/${acct}_* | ${JQ} -Rs '. | split("\n") | map(select (. != "")) | map("'${ISSUER_URL}'/order" + .) | { orders: .}'`
 	log_debug "handle_orders: orders ${olist}"
 	_BODY=${olist}
+	log "INFO" "orders list returned"
 	return_result 200 "OK"
 	# no return
 }
@@ -1487,6 +1495,7 @@ handle_key_change() {
 	# The request has now been validated from the old key and the account is good.
 	# on all errors abort
 	# Verify that payload.signature has signed payload.protected & payload.payload
+	log "INFO" "keychange: request"
 	local na_pro na_pay na_sig jwk64
 	na_pro=`query_req_field '.payload | .protected // ""'`
 	na_pay=`query_req_field '.payload | .payload // ""'`
@@ -1495,33 +1504,33 @@ handle_key_change() {
 	na_pro=`url_unprotect "${na_pro}" | ${OSSL} -a -A -d`
 	na_pay=`url_unprotect "${na_pay}" | ${OSSL} -a -A -d`
 	if [ -z "${na_pro}" -o -z "${na_pay}" -o -z "${na_sig}" ]; then
-		log "ERROR" "cannot extract new account information"
+		log "ERROR" "keychange: cannot extract new account information"
 		return_error 400 "malformed" "cannot extract new account information"
 		# no return
 	fi
 	#	check the signature
 	local _alg=`echo ${na_pro} | ${JQ} -cr '.alg //'`
 	if [ -z "${_alg}" ]; then
-		log "ERROR" "canot find alg"
+		log "ERROR" "keychange: cannot find alg"
 		return_error 400 "malformed" "cannot extract alg"
 		# no return
 	fi
 	verify_signature "${jwk64}" "${_alg}" "${_sig}" "${_pemfile}"
 	if [ $? -ne 0 ]; then
-		log "ERROR" "validate_jws: error verifying signature"
+		log "ERROR" "keychange: error verifying signature"
 		return 1
 	fi
 	# 	Extract payload.payload.account and make sure it matches the current account
 	local acct oacct
 	oacct=`echo "${na_pay}" | ${JQ} -cr '.account // ""'`
 	if [ -z "${oacct}" ]; then
-		log "ERROR" "old account missing"
+		log "ERROR" "keychange: old account missing"
 		return_error 400 "malformed" "missing old account"
 	fi
 	oacct=`extract_id "${oacct}"`
 	if [ "${acct}" != "${oacct}" ]; then
-		log_debug "old account mismatch: ${acct} != ${oacct}"
-		log "ERROR" "old account does not match"
+		log_debug "handle_key_change: old account mismatch: ${acct} != ${oacct}"
+		log "ERROR" "keychange: old account does not match"
 		return_error 400 "malfomed" "old account does not match"
 		# no return
 	fi
@@ -1530,13 +1539,13 @@ handle_key_change() {
 	locak okey
 	okey=`echo "${na_pay}" | ${JQ} -cr '.oldKey // ""'`
 	if [ -z "${okey}" ]; then
-		log "ERROR" "old key missing"
+		log "ERROR" "keychange: old key missing"
 		return_error 400 "malformed" "missing old key"
 	fi
 	oacct=`jwk_to_key "${okey}"`
 	if [ "${acct}" != "${oacct}" ]; then
-		log_debug "old key mismatch: ${acct} != ${oacct}"
-		log "ERROR" "old key does not match account"
+		log_debug "handle_key_change:  key mismatch: ${acct} != ${oacct}"
+		log "ERROR" "keychange: old key does not match account"
 		return_error 400 "malfomed" "old key does not match account"
 		# no return
 	fi
@@ -1544,33 +1553,33 @@ handle_key_change() {
 	local url nurl
 	url=`query_req_field '.protected | .url // ""'`
 	if [ -z "${url}" ]; then
-		log "ERROR" "request url missing"
+		log "ERROR" "keychange: request url missing"
 		return_error 400 "malformed" "request url missing"
 		# no return
 	fi
 	nurl=`echo ${na_pro} | ${JQ} -cr '.url // ""'`
 	if [ -z "${nurl}" ]; then
-		log "ERROR" "request url missing"
+		log "ERROR" "keychange: request url missing"
 		return_error 400 "malformed" "request url missing"
 		# no return
 	fi
 	if [ "${url}" != "${nurl}" ]; then
-		log_debug "old url mismatch: ${url} != ${ourl}"
-		log "ERROR" "old url does not match request"
+		log_debug "handle_key_change: old url mismatch: ${url} != ${ourl}"
+		log "ERROR" "keychange: old url does not match request"
 		return_error 400 "malfomed" "old url does not match request"
 		# no return
 	fi
 	#	check to see if an account exists with the new key. if so error with 409 (conflict)
 	if [ -f ${ACME_DIR}/accts/${nacct} ]; then
-		log_debug "new account already exists: ${nacct}"
-		log "ERROR" "new account already exists"
+		log_debug "handle_key_change: new account already exists: ${nacct}"
+		log "ERROR" "keychange: new account already exists"
 		return_error 409 "conflict" "new account already exists"
 		# no return
 	fi
 	local _jwk
 	_jwk=`echo "${na_pro}" | ${JQ} -cr '.jwk // ""'`
 	if [ -z "${_jwk}" ]; then
-		log "ERROR" "new key not found"
+		log "ERROR" "keychange: new key not found"
 		return_error 400 "malfomed" "new key not found"
 		# no return
 	fi
@@ -1580,7 +1589,7 @@ handle_key_change() {
 	#	write out to new account.
 	echo "${_BODY}" > ${ACME_DIR}/accts/${nacct}
 	if [ $? -ne 0 ]; then
-		log "ERROR" "error writing new account: ${nacct}"
+		log "ERROR" "keychange: error writing new account: ${nacct}"
 		return_error 400 "serverInternal" "error writing new account"
 		# no return
 	fi
@@ -1589,25 +1598,25 @@ handle_key_change() {
 	_pemfile="${ACME_DIR}/accts/${nacct}.pem"
 	_pem=`jwk_to_pem ${_jwk}`
 	if [ $? -ne 0 -o -z "${_pem}" ]; then
-		log "ERROR" "error generating pem from jwk"
+		log "ERROR" "keychange: error generating pem from jwk"
 		return_error 400 "serverInternal" "error writing new account"
 		# not reached
 	fi
 	# save pem file for future
 	echo -n "$_pem" > ${_pemfile}
 	if [ $? -ne 0 ]; then
-		log "ERROR" "error saving pem"
+		log "ERROR" "keychange: error saving pem"
 		return_error 400 "serverInternal" "error writing new account"
 		# not reached
 	fi
 	#	mark old account as "deactivated". cleanup script will take care of it
 	set_account_field "${acct}" '.status = "deactivated"'
 	if [ $? -ne 0 ]; then
-		log "ERROR" "error deactivating old account ${acct}"
+		log "ERROR" "keychange: error deactivating old account ${acct}"
 		return_error 400 "serverInternal" "error deactivating old account"
 		# no return
 	fi
-	log "INFO" "account assigned new key"
+	log "INFO" "keychange: account assigned new key"
 	return_result 200 "OK"
 	# no return
 }
@@ -1617,6 +1626,7 @@ handle_order() {
 	local status
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
+	log "INFO" "order request"
 	acct=`verify_acct` || return_error 400 ${acct}
 	local raw_identifiers=`query_req_field '.payload | .identifiers'`
 	local identifiers=`query_req_field '.payload | .identifiers[] | "\(.type):\(.value)"'`
@@ -1629,6 +1639,7 @@ handle_order() {
 	if [ ! -z ${notBefore} ]; then
 		local nb=`rfc3339_to_epoch "${notBefore}"`
 		if [ ${nb} -gt ${now} ]; then
+			log "ERROR" "order: notBefore invalid"
 			# notBefore is in the future
 			return_result 400 "Bad Request"
 		fi
@@ -1636,6 +1647,7 @@ handle_order() {
 	if [ ! -z ${notAfter} ]; then
 		local na=`rfc3339_to_epoch "${notAfter}"`
 		if [ ${na} -gt ${max} ]; then
+			log "ERROR" "order: notAfter invalid"
 			# notAfter is longer than MAX_CERT_TIME
 			return_result 400 "Bad Request"
 		fi
@@ -1646,9 +1658,10 @@ handle_order() {
 		case $t in
 			dns) ;;
 			*)
-			return_error 404 "unsupportedIdentifier" "do not support ${t} identifiers"
-			# no return
-			;;
+				log "ERROR" "order: unhandled idnetifier ${t}"
+				return_error 404 "unsupportedIdentifier" "do not support ${t} identifiers"
+				# no return
+				;;
 		esac
 	done
 	local order=`${OSSL} rand -hex 8`
@@ -1673,10 +1686,12 @@ handle_order() {
 	echo "${_BODY}" > ${ACME_DIR}/orders/${acct}_${order}
 	if [ $? -ne 0 ]; then
 		_BODY=""
+		log "ERROR" "order: error saving"
 		return_result 500 "error saving order"
 		#no return
 	fi
 	# return success to requestor
+	log "INFO" "order: new order created ${acct}_${order}"
 	return_result 201 "Created"
 	# no return
 }
@@ -1685,6 +1700,7 @@ handle_authz() {
 	local acct
 	local status
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log "INFO" "authz: request"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
 #XXX handle 'deactivate' requests
@@ -1694,7 +1710,7 @@ handle_authz() {
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
-	log_debug "handle_authz: order ${order}"
+	log "INFO" "authz: order ${order}"
 	if [ -f ${ACME_DIR}/challenges/${order} ]; then
 		log_debug "handle_authz: processing chanllenge ${order}"
 		# just load the file for return.  The status will be updated by the testing functions
@@ -1704,20 +1720,20 @@ handle_authz() {
 			"valid")
 				set_order_field "${order}" '.status = "valid"'
 				if [ $? -ne 0 ]; then
-					log "ERROR" "could not set order state to valid for order ${order}"
+					log "ERROR" "authz: could not set order state to valid for order ${order}"
 					return_error 501 "serverInternal" "error seting order state to valid"
 					# no return
 				fi
 				;;
 			"invalid")
 				set_order_field "${order}" '.status = "invalid"'
-					log "ERROR" "could not set order state to invalid for order ${order}"
+					log "ERROR" "authz: could not set order state to invalid for order ${order}"
 					return_error 501 "serverInternal" "error seting order state to invalid"
 					# no return
 				;;
 		esac
 	else
-		log_debug "handle_authz: creating new challenge"
+		log "INFO" "authz: create new challenge"
 		local token=`${OSSL} rand -hex 16`
 		local identifiers=`query_order_field "${order}" ".identifiers"` || return_error 500 "serverInternal" "cannt retrieve identifires from order"
 		local expires=`query_order_field "${order}" ".expires"` || return_error 500 "serverInternal" "cannot retrieve expire from order"
@@ -1729,10 +1745,12 @@ handle_authz() {
 		# save challenge document
 		echo "$_BODY" > ${ACME_DIR}/challenges/${order}
 		if [ $? -ne 0 ]; then
+			log "ERROR" "authz: failed to save challenge"
 			return_error 500 "serverInternal" "error saving challenge object"
 			# no return
 		fi
 	fi
+	log "INFO" "authz: success"
 	return_result 200 "OK"
 	# no return
 }
@@ -1741,6 +1759,7 @@ handle_challenge() {
 	local acct
 	local status
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log "INFO" "challenge: request"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
 	local order=`extract_id`
@@ -1749,25 +1768,28 @@ handle_challenge() {
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
-	log_debug "handle_challenge: order ${order}"
+	log "INFO" "challenge: order ${order}"
 	if [ -f ${ACME_DIR}/challenges/${order} ]; then
 		status=`query_challenge_field ${order} '.status // ""'` || return_error 500 "serverInternal" "cannot find status"
-		log_debug "handle_challenge: challenge status ${status}"
+		log "INFO" "challenge: status ${status}"
 		case "${status}" in
 			"pending")
 				set_header "Retry-After: ${CLIENT_RETRY}"
 				_BODY=`query_challenge_field ${order} '.challenges // ""'` || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
 					# no challenges found...
+					log "ERROR" "challenge: no valid challenges found"
 					return_error 400 "malformed" "no valid challenges found"
 					# no return
 				fi
+				log "INFO" "challenge: calling process"
 				# call ourselves to process the order
 				$0 -x ${order}
 				;;
 			"processing")
 				# still trying
 				set_header "Retry-After: ${CLIENT_RETRY}"
+				log "WARN" "challenge: alredy processing"
 				return_result "204" "No Content"
 				# no return
 				;;
@@ -1775,33 +1797,39 @@ handle_challenge() {
 				# done... return first challenge object that has status of 'valid'
 				_BODY=`query_challenge_field ${order} '.challenges | map(select(.status == "valid")) | .[0] // ""'` || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
+					log "ERROR" "challenge: no valid challenges found"
 					# no challenges found...
 					return_error 400 "malformed" "no valid challenges found"
 					# no return
 				fi
-#log_debug "handle_challenge: resp: ${_BODY}"
+				log "INFO" "challenge: valid"
 				return_result 200 "OK"
 				# no return
 				;;
 			"invalid")
 				_BODY=`query_challenge_field ${order} '.challenges | map(select(.status == "invalid")) | .[0] // ""'` || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
+					log "ERROR" "challenge: no valid challenges found"
 					# no challenges found...
 					return_error 400 "malformed" "no valid challenges found"
 					# no return
 				fi
+				log "INFO" "challenge: invalid"
 				return_result 200 "OK"
 				# no return
 				;;
 			*)
-				return_error 500 "serverInternal" "invalid challenge state: $status"
+				log "ERROR" "challenge: unhandled status: ${status}"
+				return_error 500 "serverInternal" "invalid challenge state: ${status}"
 				# no return
 				;;
 		esac
 	else
+		log "ERROR" "challenge: invalid challenge ${order}"
 		return_error 401 "invalidChallenge" "cannot find requested challenge"
 		# no return
 	fi
+	log "INFO" "challenge: success"
 	return_result 200 "OK"
 	# no return
 }
@@ -1812,6 +1840,7 @@ handle_finalize() {
 	local _csr
 	local _ret
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log "INFO" "finalize: process"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
 	local order=`extract_id`
@@ -1820,7 +1849,7 @@ handle_finalize() {
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
-	log_debug "handle_finalize: order ${order}"
+	log "INFO" "finalize: order ${order}"
 	if [ -f ${ACME_DIR}/orders/${order} ]; then
 		status=`query_order_field ${order} '.status // ""'` || return_error 500 "serverInternal" "cannot find order status"
 		log_debug "handle_finalize: order status ${status}"
@@ -1828,16 +1857,19 @@ handle_finalize() {
 			"valid")
 				_csr=`query_req_field '.payload | .csr // ""'` || return_error 500 "serverInternal" "error extracting the CSR"
 				if [ -z "${_csr}" ]; then
+					log "ERROR" "finalize: request not found"
 					return_error 499 "malformed" "CSR not found in request"
 					# no return
 				fi
 				echo "-----BEGIN CERTIFICATE REQUEST-----\n$(url_unprotect ${_csr})\n-----END CERTIFICATE REQUEST-----" > ${ACME_DIR}/certs/${order}.req
 				if [ $? -ne 0 ]; then
+					log "ERROR" "finalize: error saving rquest"
 					return_error 500 "serverInternal" "error saving csr"
 					# no return
 				fi
 				_ret=`process_csr ${order}`
 				if [ $? -ne 0 ]; then
+					log "ERROR" "finalize: bad request"
 					return_error 400 "badCSR" "${_ret}"
 					# no return
 				fi
@@ -1851,30 +1883,37 @@ handle_finalize() {
 				# drop thru and return OK
 				;;
 			"ready")
+				log "ERROR" "finalize: ready"
 				return_error 499 "orderNotReady" "order not ready to be finalized"
 				# no return
 				;;
 			"pending")
+				log "ERROR" "finalize: pending"
 				return_error 499 "orderNotReady" "order not ready to be finalized"
 				# no return
 				;;
 			"processing")
+				log "ERROR" "finalize: processing"
 				return_error 499 "orderNotReady" "order not ready to be finalized"
 				# no return
 				;;
 			"invalid")
+				log "ERROR" "finalize: invalid"
 				return_error 499 "orderNotReady" "order not ready to be finalized"
 				# no return
 				;;
 			*)
-				return_error 500 "serverInternal" "invalid order state: $status"
+				log "ERROR" "finalize: unhandled status: ${status}"
+				return_error 500 "serverInternal" "invalid order state: ${status}"
 				# no return
 				;;
 		esac
 	else
+		log "ERROR" "finalize: invalid request"
 		return_error 401 "invalidChallenge" "cannot find requested order"
 		# no return
 	fi
+	log "INFO" "finalize: success"
 	return_result 200 "OK"
 	# no return
 }
@@ -1883,6 +1922,7 @@ handle_certificate() {
 	local acct
 	local status
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log "INFO" "certificate: process"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
 	local order=`extract_id`
@@ -1891,7 +1931,7 @@ handle_certificate() {
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
-	log_debug "handle_certificate: order ${order}"
+	log "INFO" "certificate: handling order ${order}"
 	if [ -f ${ACME_DIR}/certs/${order}.pem ]; then
 #NOTE: CAT to _BODY eats the newline and borks the cert. so replicate the
 # return_success() function.
@@ -1907,11 +1947,14 @@ handle_certificate() {
 		# output a body if it exists
 		${CAT} ${ACME_DIR}/certs/${order}.pem | ${SED} -n '/^-----/,/^-----/p'
 		clean_content
+		log "INFO" "certificate: success"
 		exit 0
 	else
+		log "INFO" "certificate: invalid certificate request"
 		return_error 401 "invalidChallenge" "cannot find requested order"
 		# no return
 	fi
+	log "INFO" "certificate: success"
 	return_result 200 "OK"
 	# no return
 }
@@ -1920,24 +1963,29 @@ handle_revoke() {
 	local acct
 	local status
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log "INFO" "revoke process"
 	acct=`verify_acct` || return_error 400 ${acct}
 	_ret=`process_revoke ${acct}`
 	case "$?" in
 		1) #alreadyRevoked
+			log "ERROR" "revoke: already revoked"
 			return_error 401 "alreadyRevoked" "${_ret}"
 			# no return
 			;;
 		2) #not found
+			log "ERROR" "revoke: certificate not found"
 			return_error 401 "badCertificate" "${_ret}"
 			# no return
 			;;
 		3) # other
+			log "ERROR" "revoke: error ${_ret}"
 			return_error 401 "malformed" "${_ret}"
 			# no return
 			;;
 	esac
 
 	_BODY=""
+	log "INFO" "revoke success"
 	return_result 200 "OK"
 	# no return
 }
@@ -1974,6 +2022,7 @@ DEVNUL=${DEVNUL:-"/dev/null"}
 MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-65535}
 
 if [ -z "${ISSUER_DOMAIN}" -o -z "${ISSUER_EMAIL}" ]; then
+	log "ERROR" "incomplete config"
 	echo "Status: 500 incomplete config"
 	exit 1
 fi
@@ -2002,9 +2051,10 @@ set_header "Cache-Control: public, max-age=0, no-cache"
 #SEE 6.1
 set_header 'Access-Control-Allow-Origin: *'
 
-# create dir structure (if not exists)
+# check dir structure
 check_dirs ${ACME_DIR}
 if [ $? -ne 0 ]; then
+	log "ERROR" "error validating directories"
 	log_debug "one or more directories missing in ${ACME_DIR}"
 	return_error 503 "serverInternal" "server failed internal checks"
 	# no return
@@ -2012,13 +2062,14 @@ fi
 
 ## request must use HTTPS
 if [ -z "$HTTPS" -o "$HTTPS" != "on" ]; then
+	log "ERROR" "https not used"
 	log_debug "HTTPS not used: '$HTTPS'"
 	return_error 400 "malformed" "HTTPS must be used"
 	# no return
 fi
+# rfc 8555 6.1 states that useragent MUST be sent
 if [ -z "$HTTP_USER_AGENT" ]; then
 	log "ERROR" "User agent not specified"
-	# rfc 8555 6.1 states that useragent MUST be sent
 	return_error 400 "malformed" "User-Agent not specified"
 	# no return
 fi
