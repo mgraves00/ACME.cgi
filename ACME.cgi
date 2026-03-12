@@ -611,39 +611,83 @@ set_challenge_field() {
 	fi
 	return 0
 }
-
-# see section 6.2
-# validate the JSON Web Signature
-validate_jws() {
-	local _jwk64=$(echo -n "${_JWK64}" | ${TR} -d '\n\r\t ')
-	local _kty
-	local _crv
-	local _sig
-	local _pem
-	local _sigfile
-	local _pemfile
-	local _acct
-	local _alg
-	local _hash
-	_acct=`jwk_to_acct`
-	if [ $? -ne 0 ]; then
-		# jwk not in request... look for kid
-		local _kid=`query_req_field '.protected | .kid // ""'`
-		if [ -z "${_kid}" ]; then
-			return 1
-		fi
-#		_acct=${_kid##*/}
-		_acct=`extract_id "${_kid}"`
-	fi
-	if [ -z "${_acct}" ]; then
-		# account not found
+jwk_to_pem() {
+	local _jwk=$1
+	local _kty _crv _sig _pem
+	if [ -z "${_jwk}" ]; then
+		log_debug "jwk_to_pem: no jwk"
 		return 1
 	fi
-	log "WARN" "validate_jws: looking up account: ${_acct}"
-	_pemfile="${ACME_DIR}/accts/${_acct}.pem"
-	_alg=`query_req_field '.protected | .alg'`
-	if [ $? -ne 0 ]; then
-		log_debug "validate_jws: failed get alg"
+
+	_kty=`echo "${_jwk}" | ${JQ} -cr '.kty // ""'`
+	if [ $? -ne 0 -o -z "${_kty}"]; then
+		log_debug "jwk_to_pem: failed get kty"
+		return 1
+	fi
+	_crv=`echo "${_jwk}" | ${JQ} -cr '.crv // ""'`
+	if [ $? -ne 0 -o -z "${_crv}"]; then
+		log_debug "jwk_to_pem: failed get crv"
+		return 1
+	fi
+	case "${_kty}" in
+		EC)
+			local _x
+			local _y
+			_x=`echo "${_jwk}" | ${JQ} -cr '.x // ""'`
+			if [ $? -ne 0 -o -z "${_x}"]; then
+				log_debug "jwk_to_pem: failed get x"
+				return 1
+			fi
+			_y=`echo "${_jwk}" | ${JQ} -cr '.y // ""'`
+			if [ $? -ne 0 -o -z "${_y}"]; then
+				log_debug "jwk_to_pem: failed get y"
+				return 1
+			fi
+			_pem=`_jwk_ec_public_pem "${_crv}" "${_x}" "${_y}"`
+			if [ $? -ne 0 ]; then
+				log_debug "jwk_to_pem: generate EC PEM"
+				return 1
+			fi
+			;;
+		RSA)
+			local _n
+			local _e
+			_n=`echo "${_jwk}" | ${JQ} -cr '.n // ""'`
+			if [ $? -ne 0 -o -z "${_n}" ]; then
+				log_debug "jwk_to_pem: failed get n"
+				return 1
+			fi
+			_e=`echo "${_jwk}" | ${JQ} -cr '.e // ""'`
+			if [ $? -ne 0 -o -z "${_e}" ]; then
+				log_debug "jwk_to_pem: failed get e"
+				return 1
+			fi
+			_pem=`_jwk_rsa_public_pem "${_n}" "${_e}"`
+			if [ $? -ne 0 ]; then
+				log_debug "jwk_to_pem: generate RSA PEM"
+				return 1
+			fi
+			;;
+		*)	# unsupported type
+			log "ERROR" "jwk_to_pem: unsupported signature type: ${_kty}"
+			return 1
+			;;
+	esac
+	echo "${_pem}"
+	return 0
+}
+
+verify_signature() {
+	local _jwk64=$1
+	local _alg=$2
+	local _sig=$3
+	local _pemfile=$4
+	local _sigfile
+	local _ret
+	local _hash
+
+	if [ -z "${_alg}" -o -z "${_sig}" -o -z "${_pemfile}" ]; then
+		log_debug "verify_signature: missing required fields"
 		return 1
 	fi
 	case "${_alg}" in
@@ -651,66 +695,79 @@ validate_jws() {
 		*384) _hash="-sha384" ;;
 		*512) _hash="-sha512" ;;
 		*)
-			log "ERROR" "validate_jws: hash not supported: ${_alg}"
+			log "ERROR" "verify_signature: hash not supported: ${_alg}"
 			return 1
 			;;
 	esac
+	_sigfile=`${MKTEMP} -t "acme-sig.XXXXXXX" 2>&1`
+	if [ $? -ne 0 ]; then
+		log_debug "verify_signature: failed to make temp file ${_sigfile}"
+		return 1
+	fi
+	# save sig to file in DER format
+	sig_to_der "${_sig}" "${_alg}" > ${_sigfile}
+	if [ $? -ne 0 ]; then
+		log_debug "validate_jws: failed to save signature to tmpfile"
+		${RM} -f ${_sigfile}
+		return 1
+	fi
+	# verify the signature
+	_ret=`echo -n "${_jwk64}" | ${OSSL} dgst ${_hash} -verify ${_pemfile} -signature ${_sigfile}`
+	if [ $? -ne 0 ]; then
+		log "ERROR" "verify_signature: failed verify signature"
+		log_debug "alg: ${_alg}"
+		log_debug "jwk64: ${_jwk64}"
+		log_debug "keyfile: $(${CAT} ${_pemfile})"
+		log_debug "signature: $(${CAT} ${_sigfile} | ${OSSL} enc -a -A)"
+		log_debug "validate_jws: signature verify failed: ${_ret}"
+		#${CAT} ${_sigfile} | ${OSSL} asn1parse -inform DER -dump >&2
+		${RM} -f ${_sigfile}
+		return 1
+	fi
+	${RM} -f ${_sigfile}
+	return 0
+}
+
+# see section 6.2
+# validate the JSON Web Signature
+validate_jws() {
+	local _jwk64=$(echo -n "${_JWK64}" | ${TR} -d '\n\r\t ')
+	local _pem
+	local _pemfile
+	local _acct
+	local _alg
+	_acct=`jwk_to_acct`
+	if [ $? -ne 0 ]; then
+		# jwk not in request... look for kid
+		local _kid=`query_req_field '.protected | .kid // ""'`
+		if [ -z "${_kid}" ]; then
+			return 1
+		fi
+		_acct=`extract_id "${_kid}"`
+	fi
+	if [ -z "${_acct}" ]; then
+		# account not found
+		return 1
+	fi
+	log "WARN" "validate_jws: looking up account: ${_acct}"
+	_alg=`query_req_field '.protected | .alg'`
+	if [ $? -ne 0 ]; then
+		log_debug "validate_jws: failed get alg"
+		return 1
+	fi
+	_pemfile="${ACME_DIR}/accts/${_acct}.pem"
 	# if PEM file has not been created... create and save it.
 	if [ ! -f "${_pemfile}" ]; then
-		_kty=`query_req_field '.protected | .jwk | .kty'`
-		if [ $? -ne 0 ]; then
-			log_debug "validate_jws: failed get kty"
+		_jwk=`query_req_field '.protected | .jwk // ""'`
+		if [ $? -ne 0 -o -z "${_jwk}"]; then
+			log_debug "validate_jws: failed get jwk"
 			return 1
 		fi
-		_crv=`query_req_field '.protected | .jwk | .crv'`
-		if [ $? -ne 0 ]; then
-			log_debug "validate_jws: failed get crv"
+		_pem=`jwk_to_pem ${_jwk}`
+		if [ $? -ne 0 -o -z "${_pem}" ]; then
+			log_debug "validate_jws: failed gen pem"
 			return 1
 		fi
-		case "${_kty}" in
-			EC)
-				local _x
-				local _y
-				_x=`query_req_field '.protected | .jwk | .x // ""'`
-				if [ $? -ne 0 -o -z "${_x}"]; then
-					log_debug "validate_jws: failed get x"
-					return 1
-				fi
-				_y=`query_req_field '.protected | .jwk | .y // ""'`
-				if [ $? -ne 0 -o -z "${_y}"]; then
-					log_debug "validate_jws: failed get y"
-					return 1
-				fi
-				_pem=`_jwk_ec_public_pem "${_crv}" "${_x}" "${_y}"`
-				if [ $? -ne 0 ]; then
-					log_debug "validate_jws: generate EC PEM"
-					return 1
-				fi
-				;;
-			RSA)
-				local _n
-				local _e
-				_n=`query_req_field '.protected | .jwk | .n // ""'`
-				if [ $? -ne 0 -o -z "${_n}" ]; then
-					log_debug "validate_jws: failed get n"
-					return 1
-				fi
-				_e=`query_req_field '.protected | .jwk | .e // ""'`
-				if [ $? -ne 0 -o -z "${_e}" ]; then
-					log_debug "validate_jws: failed get e"
-					return 1
-				fi
-				_pem=`_jwk_rsa_public_pem "${_n}" "${_e}"`
-				if [ $? -ne 0 ]; then
-					log_debug "validate_jws: generate RSA PEM"
-					return 1
-				fi
-				;;
-			*)	# unsupported type
-				log "ERROR" "validate_jws: unsupported signature type: ${_kty}"
-				return 1
-				;;
-		esac
 		# save pem file for future
 		echo -n "$_pem" > ${_pemfile}
 		if [ $? -ne 0 ]; then
@@ -738,32 +795,11 @@ validate_jws() {
 		log "ERROR" "validate_jws: failed get signature"
 		return 1
 	fi
-	_sigfile=`${MKTEMP} -t "acme-sig.XXXXXXX" 2>&1`
+	verify_signature "${_jwk64}" "${_alg}" "${_sig}" "${_pemfile}"
 	if [ $? -ne 0 ]; then
-		log_debug "validate_jws: failed to make temp file ${_sigfile}"
+		log "ERROR" "validate_jws: error verifying signature"
 		return 1
 	fi
-	# save sig to file in DER format
-	sig_to_der "${_sig}" "${_alg}" > ${_sigfile}
-	if [ $? -ne 0 ]; then
-		log_debug "validate_jws: failed to save signature to tmpfile"
-		${RM} -f ${_sigfile}
-		return 1
-	fi
-	# verify the signature
-	_ret=`echo -n "${_jwk64}" | ${OSSL} dgst ${_hash} -verify ${_pemfile} -signature ${_sigfile}`
-	if [ $? -ne 0 ]; then
-		log "ERROR" "validate_jws: failed verify signature"
-		log_debug "alg: ${_alg}"
-		log_debug "jwk64: ${_jwk64}"
-		log_debug "keyfile: $(${CAT} ${_pemfile})"
-		log_debug "signature: $(${CAT} ${_sigfile} | ${OSSL} enc -a -A)"
-		log_debug "validate_jws: signature verify failed: ${_ret}"
-		#${CAT} ${_sigfile} | ${OSSL} asn1parse -inform DER -dump >&2
-		${RM} -f ${_sigfile}
-		return 1
-	fi
-	${RM} -f ${_sigfile}
 	log "INFO" "validate_jws: verify success"
 	return 0
 }
@@ -853,13 +889,19 @@ process_csr() {
 	return 0	
 }
 
+jwk_to_key() {
+	local _a=$1
+	_a=`echo -n "${_a}" | ${TR} -d " " | ${OSSL} dgst -sha256 | cut -f2 -d' '`
+	echo "$_a"
+}
+
 jwk_to_acct() {
 	local _a
 	_a=`query_req_field '.protected | .jwk // ""'`
 	if [ -z "${_a}" ]; then
 		return 1
 	fi
-	_a=`echo -n "${_a}" | ${TR} -d " " | ${OSSL} dgst -sha256 | cut -f2 -d' '`
+	_a=`jwk_to_key "${_a}"`
 	echo "${_a}"
 	return 0
 }
@@ -1439,6 +1481,135 @@ handle_orders() {
 handle_key_change() {
 	log_debug "handle_key_change: return 405"
 	return_result 405 "Method Not Allowed"
+	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	# abusing the acct response
+	acct=`verify_acct` || return_error 400 ${acct}
+	# The request has now been validated from the old key and the account is good.
+	# on all errors abort
+	# Verify that payload.signature has signed payload.protected & payload.payload
+	local na_pro na_pay na_sig jwk64
+	na_pro=`query_req_field '.payload | .protected // ""'`
+	na_pay=`query_req_field '.payload | .payload // ""'`
+	na_sig=`query_req_field '.payload | .signature // ""'`
+	jwk64="${na_pro}.${na_pay}"
+	na_pro=`url_unprotect "${na_pro}" | ${OSSL} -a -A -d`
+	na_pay=`url_unprotect "${na_pay}" | ${OSSL} -a -A -d`
+	if [ -z "${na_pro}" -o -z "${na_pay}" -o -z "${na_sig}" ]; then
+		log "ERROR" "cannot extract new account information"
+		return_error 400 "malformed" "cannot extract new account information"
+		# no return
+	fi
+	#	check the signature
+	local _alg=`echo ${na_pro} | ${JQ} -cr '.alg //'`
+	if [ -z "${_alg}" ]; then
+		log "ERROR" "canot find alg"
+		return_error 400 "malformed" "cannot extract alg"
+		# no return
+	fi
+	verify_signature "${jwk64}" "${_alg}" "${_sig}" "${_pemfile}"
+	if [ $? -ne 0 ]; then
+		log "ERROR" "validate_jws: error verifying signature"
+		return 1
+	fi
+	# 	Extract payload.payload.account and make sure it matches the current account
+	local acct oacct
+	oacct=`echo "${na_pay}" | ${JQ} -cr '.account // ""'`
+	if [ -z "${oacct}" ]; then
+		log "ERROR" "old account missing"
+		return_error 400 "malformed" "missing old account"
+	fi
+	oacct=`extract_id "${oacct}"`
+	if [ "${acct}" != "${oacct}" ]; then
+		log_debug "old account mismatch: ${acct} != ${oacct}"
+		log "ERROR" "old account does not match"
+		return_error 400 "malfomed" "old account does not match"
+		# no return
+	fi
+	# 	Extract the old key from the payload.protected.payload.oldkey and confirm it
+	# 		matches the old key 
+	locak okey
+	okey=`echo "${na_pay}" | ${JQ} -cr '.oldKey // ""'`
+	if [ -z "${okey}" ]; then
+		log "ERROR" "old key missing"
+		return_error 400 "malformed" "missing old key"
+	fi
+	oacct=`jwk_to_key "${okey}"`
+	if [ "${acct}" != "${oacct}" ]; then
+		log_debug "old key mismatch: ${acct} != ${oacct}"
+		log "ERROR" "old key does not match account"
+		return_error 400 "malfomed" "old key does not match account"
+		# no return
+	fi
+	#	Verify that play.protected.url == the protected.url
+	local url nurl
+	url=`query_req_field '.protected | .url // ""'`
+	if [ -z "${url}" ]; then
+		log "ERROR" "request url missing"
+		return_error 400 "malformed" "request url missing"
+		# no return
+	fi
+	nurl=`echo ${na_pro} | ${JQ} -cr '.url // ""'`
+	if [ -z "${nurl}" ]; then
+		log "ERROR" "request url missing"
+		return_error 400 "malformed" "request url missing"
+		# no return
+	fi
+	if [ "${url}" != "${nurl}" ]; then
+		log_debug "old url mismatch: ${url} != ${ourl}"
+		log "ERROR" "old url does not match request"
+		return_error 400 "malfomed" "old url does not match request"
+		# no return
+	fi
+	#	check to see if an account exists with the new key. if so error with 409 (conflict)
+	if [ -f ${ACME_DIR}/accts/${nacct} ]; then
+		log_debug "new account already exists: ${nacct}"
+		log "ERROR" "new account already exists"
+		return_error 409 "conflict" "new account already exists"
+		# no return
+	fi
+	local _jwk
+	_jwk=`echo "${na_pro}" | ${JQ} -cr '.jwk // ""'`
+	if [ -z "${_jwk}" ]; then
+		log "ERROR" "new key not found"
+		return_error 400 "malfomed" "new key not found"
+		# no return
+	fi
+	#	read account old in... update jwk in account.
+	_BODY=$(${CAT} ${ACME_DIR}/accts/${acct})
+	_BODY=$(echo "${_BODY}" | ${JQ} -cr '.jwk = ('${_jwk}' | fromjson )')
+	#	write out to new account.
+	echo "${_BODY}" > ${ACME_DIR}/accts/${nacct}
+	if [ $? -ne 0 ]; then
+		log "ERROR" "error writing new account: ${nacct}"
+		return_error 400 "serverInternal" "error writing new account"
+		# no return
+	fi
+	#	write out PEM for new account.
+	local _pem _pemfile
+	_pemfile="${ACME_DIR}/accts/${nacct}.pem"
+	_pem=`jwk_to_pem ${_jwk}`
+	if [ $? -ne 0 -o -z "${_pem}" ]; then
+		log "ERROR" "error generating pem from jwk"
+		return_error 400 "serverInternal" "error writing new account"
+		# not reached
+	fi
+	# save pem file for future
+	echo -n "$_pem" > ${_pemfile}
+	if [ $? -ne 0 ]; then
+		log "ERROR" "error saving pem"
+		return_error 400 "serverInternal" "error writing new account"
+		# not reached
+	fi
+	#	mark old account as "deactivated". cleanup script will take care of it
+	set_account_field "${acct}" '.status = "deactivated"'
+	if [ $? -ne 0 ]; then
+		log "ERROR" "error deactivating old account ${acct}"
+		return_error 400 "serverInternal" "error deactivating old account"
+		# no return
+	fi
+	log "INFO" "account assigned new key"
+	return_result 200 "OK"
+	# no return
 }
 
 handle_order() {
