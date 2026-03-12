@@ -1376,20 +1376,25 @@ handle_account() {
 		log_debug "handle_account: account status ${status}"
 		case "${status}" in
 			deactivated)
-				return_error "unauthorized" "account ${acct} is ${status}"
+				return_error 400 "unauthorized" "account ${acct} is ${status}"
 				# no return
 				;;
 			valid)
 				# just fall thru
 				;;
 			*)
-				return_error "accountNotValid" "account ${acct} is ${status}"
+				return_error 404 "accountNotValid" "account ${acct} is ${status}"
 				# no return
 				;;
 		esac
-		# update account
+		# update account info...
 		status=`query_req_field '.payload | .status //""'`
 		if [ ! -z "${status}" ]; then
+			if [ "${status}" != "deactivated" ]; then
+				# only permit client to deactivate account
+				return_error 400 "unauthorized" "invalid request to set status to ${status}"
+				# no return
+			fi
 			log_debug "handle_account: set account status to ${status}"
 			set_account_field "${acct}" '.status = "'${status}'"' || return_error 404 "serverInternal" "error updating account status"
 		else
