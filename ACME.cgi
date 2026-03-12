@@ -613,6 +613,51 @@ set_challenge_field() {
 	fi
 	return 0
 }
+
+extract_san() {
+	local _reqfile=$1
+	local _typ=${2:-"x509"}
+	local _sans
+	if [ -z "${_reqfile}" -o ! -f ${_reqfile} ]; then
+		log_debug "extact_san: cannot find request file"
+		return 1
+	fi
+	_sans=`${OSSL} ${_typ} -in ${_reqfile} -noout -text | \
+			${SED} -n '/Subject Alternative Name/,/Signature Algorithm/p' | \
+			${SED} -e '/Subject Alternative Name/d' -e '/Signature Algorithm/d' | \
+			${TR} -d "\t "`
+	echo ${_sans}
+	return 0
+}
+
+verify_cert_req() {
+	local _reqfile=$1
+	local _sans _t
+	_sans=`extract_san "${_reqfile}" "req"`
+	if [ $? -ne 0 ]; then
+		log_debug "verify_request: error extracting SAN"
+		return 1
+	fi
+	local _typ, _dns
+	IFS="," for _s in ${_sans}; do
+		_typ=`echo ${_s} | ${CUT} -f1 -d:`
+		_dns=`echo ${_s} | ${CUT} -f2 -d:`
+		if [ "${_typ}" != "DNS" ]; then
+			log_debug "verify_request: unsupported SAN type ${_typ}"
+			return 1
+		fi
+		# error on records with '*'
+		_t=`echo ${_dns} | ${TR} -d '*'`
+		if [ "${_dns}" != "${_t}" ]; then
+			log_debug "verify_request: found wildcard SAN"
+			return 1
+		fi
+	#TODO: add additional match checks
+	done
+	# no errors
+	return 0
+}
+
 jwk_to_pem() {
 	local _jwk=$1
 	local _kty _crv _sig _pem
@@ -818,9 +863,9 @@ set_header() {
 valid_target() {
 	local _t=$1
 	local _i
-#XXX need to make more dynamic
-#XXX resolve the host name
-#XXX check for rfc1918 and link-local addresses
+#TODO need to make more dynamic
+#TODO resolve the host name
+#TODO check for rfc1918 and link-local addresses
 	for _i in "127.0.0.1 localhost 169.254.169.254"; do
 		if [ "${_i}" == "${_t}" ]; then
 			return 1
@@ -881,6 +926,11 @@ process_csr() {
 	fi
 	if [ ! -f ${ACME_DIR}/certs/${_o}.req ]; then
 		echo "process_csr: csr file not found"
+		return 1
+	fi
+	verify_cert_req "${ACME_DIR}/certs/${_o}.req"
+	if [ $? -ne 0 ]; then
+		echo "process_csr: bad csr request"
 		return 1
 	fi
 	_ret=$(${CA_HELPER} "sign" ${ACME_DIR}/certs/${_o}.req ${ACME_DIR}/certs/${_o}.pem ${MAX_CERT_DAYS})
