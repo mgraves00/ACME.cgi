@@ -159,6 +159,14 @@ err_to_hc() {
 	esac
 }
 
+lc() {
+	if [ $# -eq 0 ]; then
+		${CAT} | ${TR} 'A-Z' 'a-z'
+	else
+		echo "$1" | ${TR} 'A-Z' 'a-z'
+	fi
+}
+
 clean_content() {
 	if [ ! -z "${_REQ_FILE}" -a -f "${_REQ_FILE}" ]; then
 		${RM} -f "${_REQ_FILE}"
@@ -1682,16 +1690,19 @@ handle_order() {
 	local identifiers=`query_req_field '.payload | .identifiers[] | "\(.type):\(.value)"'`
 	local notBefore=`query_req_field '.payload | .noBefore // ""'`
 	local notAfter=`query_req_field '.payload | .noBefore // ""'`
+	local wildcard=`query_req_field '.payload | .wildcard // ""'`
 	local now=`get_epoch`
 	local max=$((${now}+${MAX_CERT_TIME}))
-#	log_debug "handle_order: identifiers=${raw_identifiers}"
-#	log_debug "handle_order: identifiers=${identifiers}"
+	if [ ! -z "${wildcard}" -a "$(lc ${wildcard})" == "true" ]; then
+		log "ERROR" "order: wildcard requested, not supported"
+		return_error 400 "rejectedIdentifier" "wildcards not supported"
+	fi
 	if [ ! -z ${notBefore} ]; then
 		local nb=`rfc3339_to_epoch "${notBefore}"`
 		if [ ${nb} -gt ${now} ]; then
 			log "ERROR" "order: notBefore invalid"
 			# notBefore is in the future
-			return_result 400 "Bad Request"
+			return_error 400 "malformed" "Bad Request"
 		fi
 	fi
 	if [ ! -z ${notAfter} ]; then
@@ -1699,7 +1710,7 @@ handle_order() {
 		if [ ${na} -gt ${max} ]; then
 			log "ERROR" "order: notAfter invalid"
 			# notAfter is longer than MAX_CERT_TIME
-			return_result 400 "Bad Request"
+			return_error 400 "malformed" "Bad Request"
 		fi
 	fi
 	# verify we can handle the authz
