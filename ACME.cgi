@@ -429,6 +429,7 @@ read_content() {
 			return_error 413 "malformed" "Content Size Mismatch"
 			# no return
 		fi
+		log_debug "read_content: content size ${_sz}"
 		# save the protect and payload in base64 for validating jwk
 		_JWK64=$(${CAT} ${_REQ_FILE} | ${JQ} -cr '(.protected // "") + "." + (.payload // "")')
 		# decode the base64 encodings
