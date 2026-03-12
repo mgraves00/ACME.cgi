@@ -44,7 +44,6 @@ PRINTF=$(which printf)
 MKTEMP=$(which mktemp)
 DNSLOOKUP=$(which host)
 HTTPLOOKUP=$(which curl)
-DEVNUL="/tmp/acme.discard"
 
 # --- GLOBAL VARS ---
 _HEADERS=
@@ -1792,7 +1791,7 @@ VERIFY_RETRIES=${VERIFY_RETIRES:-1}
 VERIFY_DELAY=${VERIFY_DELAY:-1}
 CA_HELPER=${CA_HELPER:-"/cgi-bin/ACME_helper.sh"}
 DEBUG=${DEBUG:-0}
-DEVNUL=${DEVNUL:-"/tmp/acme-stderr.out"}
+DEVNUL=${DEVNUL:-"/dev/null"}
 
 if [ -z "${ISSUER_DOMAIN}" -o -z "${ISSUER_EMAIL}" ]; then
 	echo "Status: 500 incomplete config"
