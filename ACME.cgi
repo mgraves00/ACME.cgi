@@ -73,7 +73,7 @@ log_debug() {
 log() {
 	local _sev=$1; shift;
 	local _d=`get_epoch`
-	local _h=${REMOTE_ADDR:-"unknown"}
+	local _h=${HTTP_X_FORWARDED_FOR:-${REMOTE_ADDR:-"unknown"}}
     echo "$(epoch_to_rfc3339 "${_d}") [${_sev}] ${_h} $*" >>"$LOG_FILE"
 }
 
