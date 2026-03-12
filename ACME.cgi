@@ -1799,8 +1799,8 @@ VERIFY_DELAY=${VERIFY_DELAY:-1}
 CA_HELPER=${CA_HELPER:-"/cgi-bin/ACME_helper.sh"}
 DEBUG=${DEBUG:-0}
 DEVNUL=${DEVNUL:-"/dev/null"}
-# default max size is 2mb... should be more than enough
-MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-2097152}
+# default max size is 64k...
+MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-65535}
 
 if [ -z "${ISSUER_DOMAIN}" -o -z "${ISSUER_EMAIL}" ]; then
 	echo "Status: 500 incomplete config"
