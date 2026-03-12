@@ -409,6 +409,11 @@ read_content() {
 	local _sz
 	local _encstr
 	if [ ! -z "${CONTENT_LENGTH}" ]; then
+		if [ ${CONTENT_LENGTH} -gt ${MAX_REQUEST_SIZE} ]; then
+			log "ERROR" "content size exceeded max size: ${CONTENT_LENGTH} too large"
+			return_error 413 "malformed" "request too large"
+			# no return
+		fi
 		_REQ_FILE=`${MKTEMP} -t "acme-XXXXXX.json"`
 		if [ $? -ne 0 ]; then
 			log "ERROR" "read_content: error createing tmp file"
@@ -416,6 +421,7 @@ read_content() {
 			# no return
 		fi
 		log_debug "read_content: _REQ_FILE=${_REQ_FILE}"
+		# NOTE: relying on http server to actually limit the max size of the request
 		${CAT} - >${_REQ_FILE}
 		_sz=$(${CAT} ${_REQ_FILE} | ${WC} -c | ${TR} -d ' ')
 		if [ "${CONTENT_LENGTH}" -ne "${_sz}" ]; then
@@ -1792,6 +1798,8 @@ VERIFY_DELAY=${VERIFY_DELAY:-1}
 CA_HELPER=${CA_HELPER:-"/cgi-bin/ACME_helper.sh"}
 DEBUG=${DEBUG:-0}
 DEVNUL=${DEVNUL:-"/dev/null"}
+# default max size is 2mb... should be more than enough
+MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-2097152}
 
 if [ -z "${ISSUER_DOMAIN}" -o -z "${ISSUER_EMAIL}" ]; then
 	echo "Status: 500 incomplete config"
