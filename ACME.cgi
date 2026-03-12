@@ -620,12 +620,12 @@ jwk_to_pem() {
 	fi
 
 	_kty=`echo "${_jwk}" | ${JQ} -cr '.kty // ""'`
-	if [ $? -ne 0 -o -z "${_kty}"]; then
+	if [ $? -ne 0 -o -z "${_kty}" ]; then
 		log_debug "jwk_to_pem: failed get kty"
 		return 1
 	fi
 	_crv=`echo "${_jwk}" | ${JQ} -cr '.crv // ""'`
-	if [ $? -ne 0 -o -z "${_crv}"]; then
+	if [ $? -ne 0 -o -z "${_crv}" ]; then
 		log_debug "jwk_to_pem: failed get crv"
 		return 1
 	fi
@@ -634,12 +634,12 @@ jwk_to_pem() {
 			local _x
 			local _y
 			_x=`echo "${_jwk}" | ${JQ} -cr '.x // ""'`
-			if [ $? -ne 0 -o -z "${_x}"]; then
+			if [ $? -ne 0 -o -z "${_x}" ]; then
 				log_debug "jwk_to_pem: failed get x"
 				return 1
 			fi
 			_y=`echo "${_jwk}" | ${JQ} -cr '.y // ""'`
-			if [ $? -ne 0 -o -z "${_y}"]; then
+			if [ $? -ne 0 -o -z "${_y}" ]; then
 				log_debug "jwk_to_pem: failed get y"
 				return 1
 			fi
@@ -759,7 +759,7 @@ validate_jws() {
 	# if PEM file has not been created... create and save it.
 	if [ ! -f "${_pemfile}" ]; then
 		_jwk=`query_req_field '.protected | .jwk // ""'`
-		if [ $? -ne 0 -o -z "${_jwk}"]; then
+		if [ $? -ne 0 -o -z "${_jwk}" ]; then
 			log_debug "validate_jws: failed get jwk"
 			return 1
 		fi
