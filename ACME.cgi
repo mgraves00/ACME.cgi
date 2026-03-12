@@ -639,7 +639,7 @@ verify_cert_req() {
 		return 1
 	fi
 	local _typ, _dns
-	IFS="," for _s in ${_sans}; do
+	for _s in $( echo "${_sans}" | ${TR} ',' ' '); do
 		_typ=`echo ${_s} | ${CUT} -f1 -d:`
 		_dns=`echo ${_s} | ${CUT} -f2 -d:`
 		if [ "${_typ}" != "DNS" ]; then
