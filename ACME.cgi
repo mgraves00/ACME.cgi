@@ -1083,7 +1083,7 @@ process_dns01_request() {
 	local _resp
 	if [ -z "${_host}" -o -z "${_token}" ]; then
 		log_debug "process_dns01_request: host or token empty"
-		echo '{\"type\":\"incorrectResponse\",\"desc\":\"tokens\"}'
+		echo '{\\\"type\\\":\\\"incorrectResponse\\\",\\\"desc\\\":\\\"tokens\\\"}'
 		return 1
 	fi
 	while [ ${_retry} -gt 0 ]; do
@@ -1101,7 +1101,7 @@ process_dns01_request() {
 					break;
 				fi
 				# retreive succeeded... but token match failed
-				echo '{\"type\":\"incorrectResponse\",\"desc\":\"tokens do not match\"}'
+				echo '{\\\"type\\\":\\\"incorrectResponse\\\",\\\"desc\\\":\\\"tokens do not match\\\"}'
 				break;
 				;;
 		esac
@@ -1162,6 +1162,7 @@ process_challenge() {
 		local typ=`echo "$chal" |cut -f1 -d:`
 		local chal_status=`echo "$chal" |cut -f2 -d:`
 		local token=`echo "$chal" |cut -f3 -d:`
+		local _ret
 		if [ "${chal_status}" == "valid" ]; then
 			# already validated the challenge...
 			log_debug "process_challenge: challenge already validated. skipping"
@@ -1177,7 +1178,6 @@ process_challenge() {
 				fi
 				;;
 			"http-01")
-				local _ret
 				_ret=`process_http01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}"`
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
@@ -1205,10 +1205,8 @@ process_challenge() {
 				_rc=1
 				break;
 			fi
-	#XXX need way to take _ret from process_xxxx_request to .error = {}
-	#log_debug "_ret = ${_ret}"
-	#					set_challenge_field "${_order}" '.error = ("'${_ret}'" | fromjson)'
-			set_challenge_field "${_order}" '.error = {"type":"connnect","desc":"error"}'
+			set_challenge_field "${_order}" '.error = ("'${_ret}'" | fromjson)'
+#			set_challenge_field "${_order}" '.error = {"type":"connnect","desc":"error"}'
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge error after unsuccessful test"
 				_rc=1
@@ -1792,7 +1790,6 @@ handle_authz() {
 	log "INFO" "authz: request"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-#TODO handle 'deactivate' requests
 	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "authz: no order specified"
@@ -1806,6 +1803,14 @@ handle_authz() {
 		_BODY=$(${CAT} ${ACME_DIR}/challenges/${order})
 		status=`query_challenge_field "$order" '.status // ""'`
 		case "${status}" in
+			"deactivated")
+				set_order_field "${order}" '.status = "deactivated"'
+				if [ $? -ne 0 ]; then
+					log "ERROR" "authz: could not set order state to deactivated for order ${order}"
+					return_error 501 "serverInternal" "error seting order state to deactivated"
+					# no return
+				fi
+				;;
 			"valid")
 				set_order_field "${order}" '.status = "valid"'
 				if [ $? -ne 0 ]; then
