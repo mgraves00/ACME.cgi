@@ -988,22 +988,43 @@ gen_thumbprint() {
 	echo "${_ret}"
 }
 
-# See section 8.1
-compare_token() {
+# See section 8.3
+compare_http_token() {
 	local _acct=$1; shift
 	local _token=$1; shift
 	local _cmp=$1; shift
 	local _tmb
 	_tmb=`gen_thumbprint "${_acct}"`
 	if [ $? -ne 0 ]; then
-		log_debug "compare_token: gen_thumbprint failed ${_tmb}"
+		log_debug "compare_http_token: gen_thumbprint failed ${_tmb}"
 		return 1
 	fi
 	if [ "${_token}.${_tmb}" == "${_cmp}" ]; then
-		log_debug "compare_token: ${_token}.${_tmb} == ${_cmp}"
+		log_debug "compare_http_token: ${_token}.${_tmb} == ${_cmp}"
 		return 0
 	fi
-	log_debug "compare_token: ${_token}.${_tmb} != ${_cmp}"
+	log_debug "compare_http_token: ${_token}.${_tmb} != ${_cmp}"
+	return 1
+}
+
+# See section 8.4
+compare_dns_token() {
+	local _acct=$1; shift
+	local _token=$1; shift
+	local _cl=$1; shift
+	local _tmb _cmp
+	_tmb=`gen_thumbprint "${_acct}"`
+	if [ $? -ne 0 ]; then
+		log_debug "compare_dns_token: gen_thumbprint failed ${_tmb}"
+		return 1
+	fi
+	log_debug "compare_dns_token: thumbprint ${_tmb}"
+	_cmp=`echo -n "${_token}.${_tmb}" | ${OSSL} dgst -sha256 -binary | ${OSSL} enc -a -A | url_protect`
+	if [ "${_cl}" == "${_cmp}" ]; then
+		log_debug "compare_dns_token: ${_cl} == ${_cmp}"
+		return 0
+	fi
+	log_debug "compare_dns_token: ${_cl} != ${_cmp}"
 	return 1
 }
 
@@ -1033,7 +1054,7 @@ process_http01_request() {
 			local _val=`${CAT} ${_tmpfile}`
 			local x
 			log_debug "process_http01_request: retreived value: ${_val}"
-			x=`compare_token "${_acct}" "${_token}" "${_val}"`
+			x=`compare_http_token "${_acct}" "${_token}" "${_val}"`
 			if [ $? -eq 0 ]; then
 				_rc=0
 				break;
@@ -1062,27 +1083,33 @@ process_dns01_request() {
 	local _resp
 	if [ -z "${_host}" -o -z "${_token}" ]; then
 		log_debug "process_dns01_request: host or token empty"
+		echo '{\"type\":\"incorrectResponse\",\"desc\":\"tokens\"}'
 		return 1
 	fi
 	while [ ${_retry} -gt 0 ]; do
-#XXX not correct... need to look for different DNS record
-		_resp=`${DNSLOOKUP} -t TXT -W ${_timout} ${_host}`
+		_resp=`${DNSLOOKUP} -t TXT -W ${_timout} "_acme-challenge.${_host}"`
 		case "${_resp}" in
 			*"not found"*)
 				;;
 			*"no TXT"*)
 				;;
 			*"descriptive text"*)
-				_resp=$(echo "$_resp" | ${CUT} -f4 -d" " | ${TR} -d '"')
-				if [ "${_resp}" == "${_token}" ]; then
+				_resp=`echo -n "${_resp}" | cut -f4 -d' ' | tr -d '"'` 
+				x=`compare_dns_token "${_acct}" "${_token}" "${_resp}"`
+				if [ $? -eq 0 ]; then
 					_rc=0
+					break;
 				fi
-				return ${_rc}
+				# retreive succeeded... but token match failed
+				echo '{\"type\":\"incorrectResponse\",\"desc\":\"tokens do not match\"}'
+				break;
 				;;
 		esac
+		log_debug "process_dns01_request: sleeping for ${_delay} retry ${_retry}"
 		${SLEEP} ${_delay}
 		_retry=$(($_retry-1))
 	done
+	log_debug "process_dns01_request: return ${_rc}"
 	return ${_rc}
 }
 
@@ -1128,7 +1155,9 @@ process_challenge() {
 		exit 0
 	fi
 	log_debug "process_challenge: challenges: ${challenges} for target ${target}"
-	local i=0	
+	local _rc
+	# loop thru all challenges and try them
+	local i=0
 	for chal in ${challenges}; do
 		local typ=`echo "$chal" |cut -f1 -d:`
 		local chal_status=`echo "$chal" |cut -f2 -d:`
@@ -1139,84 +1168,83 @@ process_challenge() {
 			continue;
 		fi
 		case "$typ" in
-#			"dns-01")
-#				process_dns01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}"
-#				if [ $? -ne 0 ]; then
-#					log "WARN" "process_challenge: ${_order} ${val} failed"
-#					_rc=1
-#					break;
-#				fi
-#				log "INFO" "process_challenge: ${_order} ${val} success"
-#				;;
+			"dns-01")
+				_ret=`process_dns01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}"`
+				_rc=$?
+				if [ ${_rc} -eq 0 ]; then
+					log "INFO" "process_challenge: ${_order} ${val} success"
+					break;
+				fi
+				;;
 			"http-01")
 				local _ret
 				_ret=`process_http01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}"`
-				if [ $? -ne 0 ]; then
-					set_challenge_field "${_order}" '.challenges['$i'].status = "invalid"'
-					if [ $? -ne 0 ]; then
-						log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
-						_rc=1
-						break;
-					fi
-					set_challenge_field "${_order}" '.status = "invalid"'
-					if [ $? -ne 0 ]; then
-						log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
-						_rc=1
-						break;
-					fi
-#XXX need way to take _ret from process_xxxx_request to .error = {}
-#log_debug "_ret = ${_ret}"
-#					set_challenge_field "${_order}" '.error = ("'${_ret}'" | fromjson)'
-					set_challenge_field "${_order}" '.error = {"type":"connnect","desc":"error"}'
-					if [ $? -ne 0 ]; then
-						log "ERROR" "process_challenge: failed to set challenge error after unsuccessful test"
-						_rc=1
-						break;
-					fi
-					log "WARN" "process_challenge: ${_order} failed"
-					_rc=1
-					break;
-				else
-					set_challenge_field "${_order}" '.challenges['$i'].status = "valid"'
-					if [ $? -ne 0 ]; then
-						log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
-						_rc=1
-						break;
-					fi
-					set_challenge_field "${_order}" '.status = "valid"'
-					if [ $? -ne 0 ]; then
-						log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
-						_rc=1
-						break;
-					fi
-					set_challenge_field "${_order}" '.validated = "'$(epoch_to_rfc3339 $(get_epoch))'"'
-					if [ $? -ne 0 ]; then
-						log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
-						_rc=1
-						break;
-					fi
+				_rc=$?
+				if [ ${_rc} -eq 0 ]; then
+					# success... so break loop
+					log "INFO" "process_challenge: ${_order} success"
+					break
 				fi
-				log "INFO" "process_challenge: ${_order} success"
 				;;
 			*)
 				log "ERROR" "process_challenge error: unknown type ${typ}"
 				_rc=1
 				;;
 		esac
+		# record the status... should only be failed challenges
+		if [ ${_rc} -ne 0 ]; then
+			set_challenge_field "${_order}" '.challenges['$i'].status = "invalid"'
+			if [ $? -ne 0 ]; then
+				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
+				_rc=1
+				break;
+			fi
+			set_challenge_field "${_order}" '.status = "invalid"'
+			if [ $? -ne 0 ]; then
+				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
+				_rc=1
+				break;
+			fi
+	#XXX need way to take _ret from process_xxxx_request to .error = {}
+	#log_debug "_ret = ${_ret}"
+	#					set_challenge_field "${_order}" '.error = ("'${_ret}'" | fromjson)'
+			set_challenge_field "${_order}" '.error = {"type":"connnect","desc":"error"}'
+			if [ $? -ne 0 ]; then
+				log "ERROR" "process_challenge: failed to set challenge error after unsuccessful test"
+				_rc=1
+				break;
+			fi
+			log "WARN" "process_challenge: ${_order} failed"
+			_rc=1
+			break;
+		fi
+		# inc to move onto next challenge
 		i=$(($i+1))
 	done
-#XXX this seems not right... perhaps need to use set_challenge_field()
-	if [ ${_rc} -ne 0 ]; then
-		log "ERROR" "process_challenge: error processing order"
-#	else
-#		local _t=$(${CAT} ${_REQ_FILE})
-#		echo "${_t}" | ${JQ} -r '.status = "valid"' >${_REQ_FILE}
-#		if [ $? -ne 0 ]; then
-#			log "ERROR" "process_challenge error: cannot set status to valid"
-#		fi
+	# process successful the response
+	if [ ${_rc} -eq 0 ]; then
+		# $i should have the value from the last successful test.
+		set_challenge_field "${_order}" '.challenges['$i'].status = "valid"'
+		if [ $? -ne 0 ]; then
+			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
+			return 1
+		fi
+		set_challenge_field "${_order}" '.status = "valid"'
+		if [ $? -ne 0 ]; then
+			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
+			return 1
+		fi
+		set_challenge_field "${_order}" '.validated = "'$(epoch_to_rfc3339 $(get_epoch))'"'
+		if [ $? -ne 0 ]; then
+			log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
+			return 1
+		fi
+		log "INFO" "process_challenge end: ${_order}"
+		exit 0
 	fi
-	log "INFO" "process_challenge end: ${_order}"
-	exit 0
+	# we had all failures
+	log "ERROR" "process_challenge: error processing order"
+	exit 1
 }
 
 return_error() {
@@ -1728,7 +1756,7 @@ handle_order() {
 	local order=`${OSSL} rand -hex 8`
 	local authorizations
 	local expire
-#XXX create an authorization for each identifier
+#TODO create an authorization for each identifier
 	authorizations="[ \"${ISSUER_URL}/authz/${acct}_${order}\" ]"
 	expire=`epoch_to_rfc3339 $((${now}+${ORDER_EXPIRE}))`
 	notBefore=`epoch_to_rfc3339 ${now}`
@@ -1764,7 +1792,7 @@ handle_authz() {
 	log "INFO" "authz: request"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-#XXX handle 'deactivate' requests
+#TODO handle 'deactivate' requests
 	local order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "authz: no order specified"
@@ -1799,9 +1827,9 @@ handle_authz() {
 		local identifiers=`query_order_field "${order}" ".identifiers"` || return_error 500 "serverInternal" "cannt retrieve identifires from order"
 		local expires=`query_order_field "${order}" ".expires"` || return_error 500 "serverInternal" "cannot retrieve expire from order"
 		local challenges='[
-{ "type": "http-01", "url": "'${ISSUER_URL}'/challenge/'${order}'", "status": "pending", "token": "'${token}'" }
+{ "type": "http-01", "url": "'${ISSUER_URL}'/challenge/'${order}'", "status": "pending", "token": "'${token}'" },
+{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${order}'", "status": "pending", "token": "'${token}'" }
 ]'
-#{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${order}'", "status": "pending", "token": "'${token}'" },
 		_BODY='{ "status": "pending", "expires": "'${expires}'", "identifier": '${identifiers}', "challenges": '${challenges}' }'
 		# save challenge document
 		echo "$_BODY" > ${ACME_DIR}/challenges/${order}
