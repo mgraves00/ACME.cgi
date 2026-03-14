@@ -139,6 +139,7 @@ err_to_hc() {
 		caa)					echo 400;;
 		compound)				echo 400;;
 		connection)				echo 400;;
+		conflict)				echo 409;;
 		dns)					echo 400;;
 		externalAccountRequired)echo 400;;
 		incorrectResponse)		echo 400;;
@@ -1322,7 +1323,7 @@ return_error() {
 	local _ec=$1; shift
 	local _msg=$*
 	local _t=`err_to_hc $_ec`
-	_ec=${_t:-$_ec}
+	_hc=${_t:-$_hc}
 	log "ERROR" "${_ec}: ${_msg}"
 	set_header 'Content-Type: application/problem+json'
 	_BODY='{"type":"urn:ietf:params:acme:error:'${_ec}'","detail":"'${_msg}'"}'
