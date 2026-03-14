@@ -731,9 +731,10 @@ verify_cert_req() {
 		# check name against list of valid names
 		if [ ! -z "${_valid_names}" ]; then
 			local _f=0
-			for _n in $(echo $_valid_names | ${TR} ', ' '\n\n'); do
+			for _n in $(echo -n "${_valid_names}" | ${TR} ', ' '\n\n'); do
+log_debug "verify_cert_req: checking name against ${_n}"
 				if [ "${_n}" == "${_dns}" ]; then
-					f=1
+					_f=1
 					break;
 				fi
 			done
@@ -2039,7 +2040,11 @@ handle_finalize() {
 					return_error 500 "serverInternal" "error saving csr"
 					# no return
 				fi
-#XXX extract identifier list from order and send to verify cert req
+				local _identifiers=`query_order_field "${order}" '.identifiers | map (.value) | @sh // ""' | ${TR} -d "'"`
+				if [ -z "${_identifiers}" ]; then
+					log "ERROR" "finalize: cannot retreive identifiers from order"
+					return_error 500 "serverInternal" "error retreiving identifiers"
+				fi
 				verify_cert_req "${ACME_DIR}/certs/${order}.req" "${_identifiers}"
 				if [ $? -ne 0 ]; then
 					echo "process_csr: bad csr request"
