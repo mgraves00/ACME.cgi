@@ -2191,9 +2191,9 @@ ISSUER_URL=${ISSUER_URL:-"https://${ISSUER_DOMAIN}/acme"}
 # has defaults
 LOG_FILE=${LOG_FILE:-"/logs/acme.log"}
 ACME_DIR=${ACME_DIR:-"/acme"}
-NONCE_EXPIRE=${NONCE_EXPIRE:-300}
 MAX_CERT_DAYS=${MAX_CERT_DAYS:-90}
-MAX_CERT_TIME=$((90*86400))
+PERMIT_RESERVED_TLDS=${PERMIT_RESERVED_TLDS:-0}
+NONCE_EXPIRE=${NONCE_EXPIRE:-300}
 CLIENT_RETRY=${CLIENT_RETRY:-5}
 ORDER_EXPIRE=${ORDER_EXPIRE:-300}
 VERIFY_TIMEOUT=${VERIFY_TIMEOUT:-1}
@@ -2207,7 +2207,7 @@ MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-65535}
 INVALID_TARGETS="127.0.0.1 localhost 169.254.169.254"
 # disabled for now... maybe handle in future.
 PERMIT_IDNA=0
-PERMIT_RESERVED_TLDS=${PERMIT_RESERVED_TLDS:-0}
+#NOTE: allow for updates from config???
 RESERVED_TLDS="local|internal|localhost|test|example|invalid|onion|corp|home|lan|intranet"
 
 if [ -z "${ISSUER_DOMAIN}" -o -z "${ISSUER_EMAIL}" ]; then
@@ -2222,6 +2222,8 @@ fi
 if [ ! -z "${HTTP_HOST}" ]; then
 	ISSUER_URL="https://${HTTP_HOST}/acme"
 fi
+# calculate MAX_CERT_TIME in seconds
+MAX_CERT_TIME=$((${MAX_CERT_DAYS}*86400))
 
 # send all stderr to DEVNUL file
 exec 2>${DEVNUL}
