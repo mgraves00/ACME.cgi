@@ -159,6 +159,13 @@ err_to_hc() {
 	esac
 }
 
+uc() {
+	if [ $# -eq 0 ]; then
+		${CAT} | ${TR} 'a-z' 'A-Z'
+	else
+		echo "$1" | ${TR} 'a-z' 'A-Z'
+	fi
+}
 lc() {
 	if [ $# -eq 0 ]; then
 		${CAT} | ${TR} 'A-Z' 'a-z'
@@ -638,29 +645,109 @@ extract_san() {
 	return 0
 }
 
-verify_cert_req() {
-	local _reqfile=$1
-	local _sans _t
-	_sans=`extract_san "${_reqfile}" "req"`
-	if [ $? -ne 0 ]; then
-		log_debug "verify_request: error extracting SAN"
+verify_dns_name() {
+	local _dns=$1
+	local _t _p
+	_dns=`echo "${_dns}" | lc`
+	# error on records with '*'
+	_t=`echo ${_dns} | ${TR} -d '*'`
+	if [ "${_dns}" != "${_t}" ]; then
+		log_debug "verify_dns_name: found wildcard SAN"
 		return 1
 	fi
-	local _typ, _dns
-	for _s in $( echo "${_sans}" | ${TR} ',' ' '); do
-		_typ=`echo ${_s} | ${CUT} -f1 -d:`
-		_dns=`echo ${_s} | ${CUT} -f2 -d:`
+	# check for invalid characters
+	_t=`echo "${_dns}" | ${SED} -n '/^[\x20-\x7E]*$/p'`
+	if [ -z "${_t}" ]; then
+		log_debug "verify_dns_name: found non-printable characters"
+		return 1
+	fi
+	# make sure that no portion of the domain is > 63 characters
+	for _p in $(echo -n "${_dns}" | ${TR} '.' '\n') do
+		if [ ${#_p} -gt 63 ]; then
+			log_debug "verify_dns_name: name part >63 characters"
+			return 1
+		fi
+		if [ ${#_p} -eq 0 ]; then
+			log_debug "verify_dns_name: name part 0 characters"
+			return 1
+		fi
+	done
+	# make sure dns length is < 254 characters
+	if [ ${#_dns} -ge 254 ]; then
+		log_debug "verify_dns_name: SAN >253 characters"
+		return 1
+	fi
+	# make sure it doesn't start or end with hyphen
+	_t=`echo "${_dns}" | ${SED} -n -E '/^[0-9a-z]([a-z0-9\.-]*[0-9a-z])?$/p'`
+	if [ -z "${_t}" ]; then
+		log_debug "verify_dns_name: name starts of ends with hyphen"
+		return 1
+	fi
+	# check IDNA / Punycode
+	_t=`echo "${_dns}" | ${SED} -n -E '/^xn--/p'`
+	if [ ! -z "${_t}" -a "${PERMIT_IDNA}" -eq 0 ]; then
+		log_debug "verify_dns_name: name contains IDNA characters. disabled by policy"
+		return 1
+	fi
+	# check reserved TLDs
+	_t=`echo "${_dns} | ${SED} -n -E '/'${RESERVED_TLDS}$'/p'`
+	if [ ! -z "${_t}" -a "${PERMIT_RESERVED_TLDS}" -eq 0 ]; then
+		log_debug "verify_dns_name: name contains reserved TLD. disabled by policy"
+		return 1
+	fi
+	# check for IP format
+	# NOTE: RE is just 'ok' for IP. Plenty of non-IP will get caught, but that's ok
+	_t=`echo "${_dns} | ${SED} -n -E '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/p'`
+	if [ ! -z "${_t}" ]; then
+		log_debug "verify_dns_name: IP formated SAN"
+		return 1
+	fi
+	#TODO: if we start accepting IP: based SANS... add the following checks
+	#	address is not one of: private, loopback, link_local, unspecified,
+	#	  multicast, broadcast
+	#	address is actually a valid IP address
+	return 0
+}
+
+verify_cert_req() {
+	local _reqfile=$1
+	local _valid_names=$*
+	local _sans _s _n
+	local _typ _dns
+	_sans=`extract_san "${_reqfile}" "req"`
+	if [ $? -ne 0 ]; then
+		log_debug "verify_cert_req: error extracting SAN"
+		return 1
+	fi
+	_valid_names=`echo ${_valid_names} | lc`
+	for _s in $( echo "${_sans}" | ${TR} ',' '\n'); do
+		_typ=`echo ${_s} | ${CUT} -f1 -d: | uc`
+		_dns=`echo ${_s} | ${CUT} -f2 -d: | lc`
+		# make sure that the SAN is DNS... we do not support other types
 		if [ "${_typ}" != "DNS" ]; then
-			log_debug "verify_request: unsupported SAN type ${_typ}"
+			log_debug "verify_cert_req: unsupported SAN type ${_typ}"
 			return 1
 		fi
-		# error on records with '*'
-		_t=`echo ${_dns} | ${TR} -d '*'`
-		if [ "${_dns}" != "${_t}" ]; then
-			log_debug "verify_request: found wildcard SAN"
+		# check name against list of valid names
+		if [ ! -z "${_valid_names}" ]; then
+			local _f=0
+			for _n in $(echo $_valid_names | ${TR} ', ' '\n\n'); do
+				if [ "${_n}" == "${_dns}" ]; then
+					f=1
+					break;
+				fi
+			done
+			if [ $_f -eq 0 ]; then
+				log_debug "verify_cert_req: name not found in valid list"
+				return 1
+			fi
+		fi
+		# verify name is actually valid
+		verify_dns_name "${_dns}"
+		if [ $? -ne 0 ]; then
+			log_debug "verify_cert_req: dns name invalid"
 			return 1
 		fi
-	#TODO: add additional match checks
 	done
 	# no errors
 	return 0
@@ -868,20 +955,6 @@ set_header() {
 	fi
 }
 
-valid_target() {
-	local _t=$1
-	local _i
-#TODO need to make more dynamic
-#TODO resolve the host name
-#TODO check for rfc1918 and link-local addresses
-	for _i in "127.0.0.1 localhost 169.254.169.254"; do
-		if [ "${_i}" == "${_t}" ]; then
-			return 1
-		fi
-	done
-	return 0
-}
-
 process_revoke() {
 #	local _o=$1
 	local _tmpfile
@@ -934,11 +1007,6 @@ process_csr() {
 	fi
 	if [ ! -f ${ACME_DIR}/certs/${_o}.req ]; then
 		echo "process_csr: csr file not found"
-		return 1
-	fi
-	verify_cert_req "${ACME_DIR}/certs/${_o}.req"
-	if [ $? -ne 0 ]; then
-		echo "process_csr: bad csr request"
 		return 1
 	fi
 	_ret=$(${CA_HELPER} "sign" ${ACME_DIR}/certs/${_o}.req ${ACME_DIR}/certs/${_o}.pem ${MAX_CERT_DAYS})
@@ -1149,7 +1217,7 @@ process_challenge() {
 		exit 0
 	fi
 	# sanitize target
-	valid_target "${target}"
+	verify_dns_name "${target}"
 	if [ $? -ne 0 ]; then
 		log "ERROR" "process_challenge: target ${target} on invalid list for order ${_order}"
 		exit 0
@@ -1961,6 +2029,12 @@ handle_finalize() {
 					return_error 500 "serverInternal" "error saving csr"
 					# no return
 				fi
+#XXX extract identifier list from order and send to verify cert req
+				verify_cert_req "${ACME_DIR}/certs/${order}.req" "${_identifiers}"
+				if [ $? -ne 0 ]; then
+					echo "process_csr: bad csr request"
+					return 1
+				fi
 				_ret=`process_csr ${order}`
 				if [ $? -ne 0 ]; then
 					log "ERROR" "finalize: bad request"
@@ -2114,6 +2188,11 @@ DEBUG=${DEBUG:-0}
 DEVNUL=${DEVNUL:-"/dev/null"}
 # default max size is 64k...
 MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-65535}
+INVALID_TARGETS="127.0.0.1 localhost 169.254.169.254"
+# disabled for now... maybe handle in future.
+PERMIT_IDNA=0
+PERMIT_RESERVED_TLDS=${PERMIT_RESERVED_TLDS:-0}
+RESERVED_TLDS="local|internal|localhost|test|example|invalid|onion|corp|home|lan|intranet"
 
 if [ -z "${ISSUER_DOMAIN}" -o -z "${ISSUER_EMAIL}" ]; then
 	log "ERROR" "incomplete config"
