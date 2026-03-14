@@ -656,9 +656,9 @@ verify_dns_name() {
 		return 1
 	fi
 	# check for invalid characters
-	_t=`echo "${_dns}" | ${SED} -n '/^[\x20-\x7E]*$/p'`
-	if [ -z "${_t}" ]; then
-		log_debug "verify_dns_name: found non-printable characters"
+	_t=`echo -n "${_dns}" | ${TR} -d '[:print:]'`
+	if [ ! -z "${_t}" ]; then
+		log_debug "verify_dns_name: found non-printable characters: ${_dns} <=> ${_t}"
 		return 1
 	fi
 	# make sure that no portion of the domain is > 63 characters
@@ -690,19 +690,19 @@ verify_dns_name() {
 		return 1
 	fi
 	# check reserved TLDs
-	_t=`echo "${_dns} | ${SED} -n -E '/'${RESERVED_TLDS}$'/p'`
+	_t=`echo "${_dns}" | ${SED} -n -E '/'${RESERVED_TLDS}'$/p'`
 	if [ ! -z "${_t}" -a "${PERMIT_RESERVED_TLDS}" -eq 0 ]; then
 		log_debug "verify_dns_name: name contains reserved TLD. disabled by policy"
 		return 1
 	fi
 	# check for IP format
 	# NOTE: RE is just 'ok' for IP. Plenty of non-IP will get caught, but that's ok
-	_t=`echo "${_dns} | ${SED} -n -E '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/p'`
+	_t=`echo "${_dns}" | ${SED} -n -E '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/p'`
 	if [ ! -z "${_t}" ]; then
 		log_debug "verify_dns_name: IP formated SAN"
 		return 1
 	fi
-	#TODO: if we start accepting IP: based SANS... add the following checks
+	#NOTE: if we start accepting IP: based SANS... add the following checks
 	#	address is not one of: private, loopback, link_local, unspecified,
 	#	  multicast, broadcast
 	#	address is actually a valid IP address
@@ -1808,10 +1808,16 @@ handle_order() {
 		fi
 	fi
 	# verify we can handle the authz
+	local auth_urls=""
+	local expire
+	local order
+	order=`${OSSL} rand -hex 8`
 	for _id in ${identifiers}; do
 		local t=`echo "${_id}" | ${CUT} -f1 -d:`
 		case $t in
-			dns) ;;
+			dns)
+				auth_urls="${auth_urls}\"${ISSUER_URL}/authz/${acct}_${order}\" "
+				;;
 			*)
 				log "ERROR" "order: unhandled idnetifier ${t}"
 				return_error 404 "unsupportedIdentifier" "do not support ${t} identifiers"
@@ -1819,11 +1825,7 @@ handle_order() {
 				;;
 		esac
 	done
-	local order=`${OSSL} rand -hex 8`
-	local authorizations
-	local expire
-#TODO create an authorization for each identifier
-	authorizations="[ \"${ISSUER_URL}/authz/${acct}_${order}\" ]"
+	auth_urls="[ $(echo ${auth_urls} | ${SED} -r -e 's/(.*) ?$/\1/' -e 's/ /,/' ) ]"
 	expire=`epoch_to_rfc3339 $((${now}+${ORDER_EXPIRE}))`
 	notBefore=`epoch_to_rfc3339 ${now}`
 	notAfter=`epoch_to_rfc3339 ${max}`
@@ -1835,7 +1837,7 @@ handle_order() {
   "notBefore": "'${notBefore}'",
   "notAfter": "'${notAfter}'",
   "identifiers": '${raw_identifiers}',
-  "authorizations" : '${authorizations}',
+  "authorizations" : '${auth_urls}',
   "finalize": "'${ISSUER_URL}'/finalize/'${acct}'_'${order}'"
 }'
 	echo "${_BODY}" > ${ACME_DIR}/orders/${acct}_${order}
