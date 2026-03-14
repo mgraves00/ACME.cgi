@@ -1182,36 +1182,39 @@ process_dns01_request() {
 }
 
 process_challenge() {
-	local _order=$1
+	local _chal=$1
 	local _rc=0
 	local _status
 	local _acct
+	local _i
 	local challenges
 	local target
-	log "INFO" "process_challenge: ${_order}"
-	if [ ! -f "${ACME_DIR}/challenges/${_order}" ]; then
-		log "ERROR" "process_challenge: cannot find challenge ${_order}"
+	log "INFO" "process_challenge: ${_chal}"
+	if [ ! -f "${ACME_DIR}/challenges/${_chal}" ]; then
+		log "ERROR" "process_challenge: cannot find challenge ${_chal}"
 		exit 0
 	fi
-	_status=`query_challenge_field "${_order}" '.status // ""'`
+	_status=`query_challenge_field "${_chal}" '.status // ""'`
 	if [ "${_status}" != "pending" ]; then
 		log_debug "process_challenge: status ${_status}"
-		log "INFO" "process_challenge: order ${_order} status ${_status}"
+		log "INFO" "process_challenge: order ${_chal} status ${_status}"
 		exit 0
 	fi
-	set_challenge_field "${_order}" '.status = "processing"'
+	set_challenge_field "${_chal}" '.status = "processing"'
 	if [ $? -ne 0 ]; then
 		log_debug "failed to set status to processing"
-		log "ERROR" "process_challenge: failed to set state of order ${_order} to processing"
+		log "ERROR" "process_challenge: failed to set state of order ${_chal} to processing"
 		exit 0
 	fi
-	_acct=`echo "${_order}" | cut -f1 -d"_"`
-	challenges=`query_challenge_field "${_order}" '.challenges[] | "\(.type):\(.status):\(.token)" // "" '`
+	_acct=`echo "${_chal}" | cut -f1 -d"_"`
+	challenges=`query_challenge_field "${_chal}" '.challenges[] | "\(.type):\(.status):\(.token)" // "" '`
 	if [ -z "${challenges}" ]; then
-		log "ERROR" "process_challenge: no challenges found for order ${_order}"
+		log "ERROR" "process_challenge: no challenges found for order ${_chal}"
 		exit 0
 	fi
-	target=`query_order_field "${_order}" '.identifiers[0] | .value // ""'`
+	_order=`echo -n "${_chal}" | ${CUT} -f1-2 -d_`
+	_i=`echo -n "${_chal}" | ${CUT} -f4 -d_`
+	target=`query_order_field "${_order}" '.identifiers['${_i}'] | .value // ""'`
 	if [ -z "${target}" ]; then
 		log "ERROR" "process_challenge: no target found in indentifer for order ${_order}"
 		exit 0
@@ -1225,7 +1228,7 @@ process_challenge() {
 	log_debug "process_challenge: challenges: ${challenges} for target ${target}"
 	local _rc
 	# loop thru all challenges and try them
-	local i=0
+	_i=0
 	for chal in ${challenges}; do
 		local typ=`echo "$chal" |cut -f1 -d:`
 		local chal_status=`echo "$chal" |cut -f2 -d:`
@@ -1241,7 +1244,7 @@ process_challenge() {
 				_ret=`process_dns01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}"`
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
-					log "INFO" "process_challenge: ${_order} ${val} success"
+					log "INFO" "process_challenge: ${_chal} ${val} success"
 					break;
 				fi
 				;;
@@ -1250,7 +1253,7 @@ process_challenge() {
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
 					# success... so break loop
-					log "INFO" "process_challenge: ${_order} success"
+					log "INFO" "process_challenge: ${_chal} success"
 					break
 				fi
 				;;
@@ -1261,19 +1264,19 @@ process_challenge() {
 		esac
 		# record the status... should only be failed challenges
 		if [ ${_rc} -ne 0 ]; then
-			set_challenge_field "${_order}" '.challenges['$i'].status = "invalid"'
+			set_challenge_field "${_chal}" '.challenges['${_i}'].status = "invalid"'
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
 				_rc=1
 				break;
 			fi
-			set_challenge_field "${_order}" '.status = "invalid"'
+			set_challenge_field "${_chal}" '.status = "invalid"'
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
 				_rc=1
 				break;
 			fi
-			set_challenge_field "${_order}" '.error = ("'${_ret}'" | fromjson)'
+			set_challenge_field "${_chal}" '.error = ("'${_ret}'" | fromjson)'
 #			set_challenge_field "${_order}" '.error = {"type":"connnect","desc":"error"}'
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge error after unsuccessful test"
@@ -1285,27 +1288,27 @@ process_challenge() {
 			break;
 		fi
 		# inc to move onto next challenge
-		i=$(($i+1))
+		_i=$(($_i+1))
 	done
 	# process successful the response
 	if [ ${_rc} -eq 0 ]; then
 		# $i should have the value from the last successful test.
-		set_challenge_field "${_order}" '.challenges['$i'].status = "valid"'
+		set_challenge_field "${_chal}" '.challenges['${_i}'].status = "valid"'
 		if [ $? -ne 0 ]; then
 			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
 			return 1
 		fi
-		set_challenge_field "${_order}" '.status = "valid"'
+		set_challenge_field "${_chal}" '.status = "valid"'
 		if [ $? -ne 0 ]; then
 			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
 			return 1
 		fi
-		set_challenge_field "${_order}" '.validated = "'$(epoch_to_rfc3339 $(get_epoch))'"'
+		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 $(get_epoch))'"'
 		if [ $? -ne 0 ]; then
 			log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
 			return 1
 		fi
-		log "INFO" "process_challenge end: ${_order}"
+		log "INFO" "process_challenge end: ${_chal}"
 		exit 0
 	fi
 	# we had all failures
@@ -1458,7 +1461,7 @@ verify_acct() {
 #			return 1
 #		fi
 	fi
-	log_debug "verify_acct: cound account ${acct}"
+	log_debug "verify_acct: found account ${acct}"
 	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
 		log "ERROR" "verify_acct: Account ${acct} does not exist."
 		echo "accountDoesNotExist" "cannot find existing account"
@@ -1809,14 +1812,15 @@ handle_order() {
 	fi
 	# verify we can handle the authz
 	local auth_urls=""
-	local expire
-	local order
+	local expire order authz
 	order=`${OSSL} rand -hex 8`
+	local _i=0
 	for _id in ${identifiers}; do
 		local t=`echo "${_id}" | ${CUT} -f1 -d:`
+		authz=`${OSSL} rand -hex 8`
 		case $t in
 			dns)
-				auth_urls="${auth_urls}\"${ISSUER_URL}/authz/${acct}_${order}\" "
+				auth_urls="${auth_urls}\"${ISSUER_URL}/authz/${acct}_${order}_${authz}_${_i}\" "
 				;;
 			*)
 				log "ERROR" "order: unhandled idnetifier ${t}"
@@ -1824,6 +1828,7 @@ handle_order() {
 				# no return
 				;;
 		esac
+		_i=$(($_i+1))
 	done
 	auth_urls="[ $(echo ${auth_urls} | ${SED} -r -e 's/(.*) ?$/\1/' -e 's/ /,/' ) ]"
 	expire=`epoch_to_rfc3339 $((${now}+${ORDER_EXPIRE}))`
@@ -1856,22 +1861,24 @@ handle_order() {
 handle_authz() {
 	local acct
 	local status
+	local order authz
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "authz: request"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-	local order=`extract_id`
-	if [ -z "$order" ]; then
-		log "ERROR" "authz: no order specified"
-		return_error 400 "malformed" "no order in url"
+	authz=`extract_id`
+	if [ -z "$authz" ]; then
+		log "ERROR" "authz: no authz specified"
+		return_error 400 "malformed" "no authz in url"
 		# no return
 	fi
-	log "INFO" "authz: order ${order}"
-	if [ -f ${ACME_DIR}/challenges/${order} ]; then
-		log_debug "handle_authz: processing chanllenge ${order}"
+	order=$(echo -n "${authz}" | ${CUT} -f1-2 -d"_")
+	log "INFO" "authz: authz ${authz}"
+	if [ -f ${ACME_DIR}/challenges/${authz} ]; then
+		log_debug "handle_authz: processing chanllenge ${authz}"
 		# just load the file for return.  The status will be updated by the testing functions
-		_BODY=$(${CAT} ${ACME_DIR}/challenges/${order})
-		status=`query_challenge_field "$order" '.status // ""'`
+		_BODY=$(${CAT} ${ACME_DIR}/challenges/${authz})
+		status=`query_challenge_field "$authz" '.status // ""'`
 		case "${status}" in
 			"deactivated")
 				set_order_field "${order}" '.status = "deactivated"'
@@ -1899,15 +1906,16 @@ handle_authz() {
 	else
 		log "INFO" "authz: create new challenge"
 		local token=`${OSSL} rand -hex 16`
-		local identifiers=`query_order_field "${order}" ".identifiers"` || return_error 500 "serverInternal" "cannt retrieve identifires from order"
+		local _i=$(echo -n "${authz}" | ${CUT} -f4 -d_)
+		local identifier=`query_order_field "${order}" ".identifiers[${_i}]"` || return_error 500 "serverInternal" "cannt retrieve identifires from order"
 		local expires=`query_order_field "${order}" ".expires"` || return_error 500 "serverInternal" "cannot retrieve expire from order"
 		local challenges='[
-{ "type": "http-01", "url": "'${ISSUER_URL}'/challenge/'${order}'", "status": "pending", "token": "'${token}'" },
-{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${order}'", "status": "pending", "token": "'${token}'" }
+{ "type": "http-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
+{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" }
 ]'
-		_BODY='{ "status": "pending", "expires": "'${expires}'", "identifier": '${identifiers}', "challenges": '${challenges}' }'
+		_BODY='{ "status": "pending", "expires": "'${expires}'", "identifier": '${identifier}', "challenges": '${challenges}' }'
 		# save challenge document
-		echo "$_BODY" > ${ACME_DIR}/challenges/${order}
+		echo "$_BODY" > ${ACME_DIR}/challenges/${authz}
 		if [ $? -ne 0 ]; then
 			log "ERROR" "authz: failed to save challenge"
 			return_error 500 "serverInternal" "error saving challenge object"
@@ -1926,20 +1934,20 @@ handle_challenge() {
 	log "INFO" "challenge: request"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-	local order=`extract_id`
-	if [ -z "$order" ]; then
-		log "ERROR" "challenge: no order specified"
+	local authz=`extract_id`
+	if [ -z "$authz" ]; then
+		log "ERROR" "challenge: no authz specified"
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
-	log "INFO" "challenge: order ${order}"
-	if [ -f ${ACME_DIR}/challenges/${order} ]; then
-		status=`query_challenge_field ${order} '.status // ""'` || return_error 500 "serverInternal" "cannot find status"
+	log "INFO" "challenge: authz ${authz}"
+	if [ -f ${ACME_DIR}/challenges/${authz} ]; then
+		status=`query_challenge_field ${authz} '.status // ""'` || return_error 500 "serverInternal" "cannot find status"
 		log "INFO" "challenge: status ${status}"
 		case "${status}" in
 			"pending")
 				set_header "Retry-After: ${CLIENT_RETRY}"
-				_BODY=`query_challenge_field ${order} '.challenges // ""'` || return_error 500 "serverInternal" "error parsing challenges"
+				_BODY=`query_challenge_field ${authz} '.challenges // ""'` || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
 					# no challenges found...
 					log "ERROR" "challenge: no valid challenges found"
@@ -1948,7 +1956,7 @@ handle_challenge() {
 				fi
 				log "INFO" "challenge: calling process"
 				# call ourselves to process the order
-				$0 -x ${order}
+				$0 -x ${authz}
 				;;
 			"processing")
 				# still trying
@@ -1959,7 +1967,7 @@ handle_challenge() {
 				;;
 			"valid")
 				# done... return first challenge object that has status of 'valid'
-				_BODY=`query_challenge_field ${order} '.challenges | map(select(.status == "valid")) | .[0] // ""'` || return_error 500 "serverInternal" "error parsing challenges"
+				_BODY=`query_challenge_field ${authz} '.challenges | map(select(.status == "valid")) | .[0] // ""'` || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
 					log "ERROR" "challenge: no valid challenges found"
 					# no challenges found...
@@ -1971,7 +1979,7 @@ handle_challenge() {
 				# no return
 				;;
 			"invalid")
-				_BODY=`query_challenge_field ${order} '.challenges | map(select(.status == "invalid")) | .[0] // ""'` || return_error 500 "serverInternal" "error parsing challenges"
+				_BODY=`query_challenge_field ${authz} '.challenges | map(select(.status == "invalid")) | .[0] // ""'` || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
 					log "ERROR" "challenge: no valid challenges found"
 					# no challenges found...
@@ -1989,7 +1997,7 @@ handle_challenge() {
 				;;
 		esac
 	else
-		log "ERROR" "challenge: invalid challenge ${order}"
+		log "ERROR" "challenge: invalid challenge ${authz}"
 		return_error 401 "invalidChallenge" "cannot find requested challenge"
 		# no return
 	fi
