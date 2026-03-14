@@ -662,7 +662,7 @@ verify_dns_name() {
 		return 1
 	fi
 	# make sure that no portion of the domain is > 63 characters
-	for _p in $(echo -n "${_dns}" | ${TR} '.' '\n') do
+	for _p in $(echo -n "${_dns}" | ${TR} '.' '\n'); do
 		if [ ${#_p} -gt 63 ]; then
 			log_debug "verify_dns_name: name part >63 characters"
 			return 1
