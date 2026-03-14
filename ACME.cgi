@@ -710,7 +710,7 @@ verify_dns_name() {
 }
 
 verify_cert_req() {
-	local _reqfile=$1
+	local _reqfile=$1; shift
 	local _valid_names=$*
 	local _sans _s _n
 	local _typ _dns
@@ -738,7 +738,7 @@ verify_cert_req() {
 				fi
 			done
 			if [ $_f -eq 0 ]; then
-				log_debug "verify_cert_req: name not found in valid list"
+				log_debug "verify_cert_req: name not found in valid list: ${_dns} not in ${_valid_names}" 
 				return 1
 			fi
 		fi
