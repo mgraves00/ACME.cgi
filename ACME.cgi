@@ -2040,6 +2040,7 @@ handle_finalize() {
 					return_error 500 "serverInternal" "error saving csr"
 					# no return
 				fi
+				#NOTE: since the status of the order is valid, we assume all challenges were validated succesfully
 				local _identifiers=`query_order_field "${order}" '.identifiers | map (.value) | @sh // ""' | ${TR} -d "'"`
 				if [ -z "${_identifiers}" ]; then
 					log "ERROR" "finalize: cannot retreive identifiers from order"
