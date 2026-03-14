@@ -767,15 +767,15 @@ jwk_to_pem() {
 		log_debug "jwk_to_pem: failed get kty"
 		return 1
 	fi
-	_crv=`echo "${_jwk}" | ${JQ} -cr '.crv // ""'`
-	if [ $? -ne 0 -o -z "${_crv}" ]; then
-		log_debug "jwk_to_pem: failed get crv"
-		return 1
-	fi
 	case "${_kty}" in
 		EC)
 			local _x
 			local _y
+			_crv=`echo "${_jwk}" | ${JQ} -cr '.crv // ""'`
+			if [ $? -ne 0 -o -z "${_crv}" ]; then
+				log_debug "jwk_to_pem: failed get crv"
+				return 1
+			fi
 			_x=`echo "${_jwk}" | ${JQ} -cr '.x // ""'`
 			if [ $? -ne 0 -o -z "${_x}" ]; then
 				log_debug "jwk_to_pem: failed get x"
