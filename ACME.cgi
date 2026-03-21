@@ -129,7 +129,7 @@ hc_string() {
 err_to_hc() {
 	local _e=$1
 	case "${_e}" in
-		accountDoesNotExist)	echo 404;;
+		accountDoesNotExist)	echo 400;;
 		alreadyRevoked)			echo 400;;
 		badCSR)					echo 400;;
 		badNonce)				echo 400;;
@@ -143,7 +143,7 @@ err_to_hc() {
 		dns)					echo 400;;
 		externalAccountRequired)echo 400;;
 		incorrectResponse)		echo 400;;
-		invalidContact)			echo 400;;
+		invalidContact)			echo 424;;
 		malformed)				echo 400;;
 		orderNotReady)			echo 425;;
 		rateLimited)			echo 429;;
@@ -164,14 +164,14 @@ uc() {
 	if [ $# -eq 0 ]; then
 		${CAT} | ${TR} 'a-z' 'A-Z'
 	else
-		echo "$1" | ${TR} 'a-z' 'A-Z'
+		echo "$*" | ${TR} 'a-z' 'A-Z'
 	fi
 }
 lc() {
 	if [ $# -eq 0 ]; then
 		${CAT} | ${TR} 'A-Z' 'a-z'
 	else
-		echo "$1" | ${TR} 'A-Z' 'a-z'
+		echo "$*" | ${TR} 'A-Z' 'a-z'
 	fi
 }
 
@@ -528,14 +528,15 @@ query_file_field() {
 		echo ""
 		return 1
 	fi
-	if [ ! -f "${_file}" ]; then
-		log_debug "query_file_field: no file ${_file}"
+	if [ ! -s "${_file}" ]; then
+		log_debug "query_file_field: no file or size is 0: ${_file}"
 		echo ""
 		return 1
 	fi
 	_res=`${CAT} ${_file} | ${JQ} -cr "${_f}"`
 	if [ $? -ne 0 ]; then
-		log_debug "query_file_field: error fetching field ${_f} from ${_file}"
+		log_debug "query_file_field: error fetching field '${_f}' from ${_file}"
+#cat ${_file} >&2
 		echo ""
 		return 1
 	fi
@@ -630,6 +631,7 @@ set_challenge_field() {
 	return 0
 }
 
+#NOTE: return comma separated list
 extract_san() {
 	local _reqfile=$1
 	local _typ=${2:-"x509"}
@@ -649,7 +651,7 @@ extract_san() {
 verify_dns_name() {
 	local _dns=$1
 	local _t _p
-	_dns=`echo "${_dns}" | lc`
+	_dns=`lc "${_dns}"`
 	# error on records with '*'
 	_t=`echo ${_dns} | ${TR} -d '*'`
 	if [ "${_dns}" != "${_t}" ]; then
@@ -720,7 +722,7 @@ verify_cert_req() {
 		log_debug "verify_cert_req: error extracting SAN"
 		return 1
 	fi
-	_valid_names=`echo ${_valid_names} | lc`
+	_valid_names=`lc ${_valid_names}`
 	for _s in $( echo "${_sans}" | ${TR} ',' '\n'); do
 		_typ=`echo ${_s} | ${CUT} -f1 -d: | uc`
 		_dns=`echo ${_s} | ${CUT} -f2 -d: | lc`
@@ -757,7 +759,7 @@ log_debug "verify_cert_req: checking name against ${_n}"
 
 jwk_to_pem() {
 	local _jwk=$1
-	local _kty _crv _sig _pem
+	local _kty _sig _pem
 	if [ -z "${_jwk}" ]; then
 		log_debug "jwk_to_pem: no jwk"
 		return 1
@@ -770,8 +772,7 @@ jwk_to_pem() {
 	fi
 	case "${_kty}" in
 		EC)
-			local _x
-			local _y
+			local _x _y _crv
 			_crv=`echo "${_jwk}" | ${JQ} -cr '.crv // ""'`
 			if [ $? -ne 0 -o -z "${_crv}" ]; then
 				log_debug "jwk_to_pem: failed get crv"
@@ -794,8 +795,7 @@ jwk_to_pem() {
 			fi
 			;;
 		RSA)
-			local _n
-			local _e
+			local _n _e
 			_n=`echo "${_jwk}" | ${JQ} -cr '.n // ""'`
 			if [ $? -ne 0 -o -z "${_n}" ]; then
 				log_debug "jwk_to_pem: failed get n"
@@ -1118,7 +1118,7 @@ process_http01_request() {
 		_resp=`${HTTPLOOKUP} --silent --connect-timeout ${_timout} -A "ACME.cgi challenge test" -o ${_tmpfile} "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1`
 		if [ $? -ne 0 ]; then
 			log_debug "process_http01_request: error looking up record. ${_resp}"
-			echo '{\"type\":\"connection",\"desc\":\"'${_resp}'\"}'
+			echo '{\\\"type\\\":\\\"connection",\\\"desc\\\":\\\"'${_resp}'\\\"}'
 			# ok to loop
 		else
 			local _val=`${CAT} ${_tmpfile}`
@@ -1130,7 +1130,7 @@ process_http01_request() {
 				break;
 			fi
 			# retreive succeeded... but token match failed
-			echo '{\"type\":\"incorrectResponse\",\"desc\":\"tokens do not match\"}'
+			echo '{\\\"type\\\":\\\"incorrectResponse\\\",\\\"desc\\\":\\\"tokens do not match\\\"}'
 			break;
 		fi
 		log_debug "process_http01_request: sleeping for ${_delay} retry ${_retry}"
@@ -1189,53 +1189,54 @@ process_challenge() {
 	local _status
 	local _acct
 	local _i
+	local _ret
+	local _rc
 	local challenges
 	local target
 	log "INFO" "process_challenge: ${_chal}"
 	if [ ! -f "${ACME_DIR}/challenges/${_chal}" ]; then
 		log "ERROR" "process_challenge: cannot find challenge ${_chal}"
-		exit 0
+		exit 1
 	fi
 	_status=`query_challenge_field "${_chal}" '.status // ""'`
 	if [ "${_status}" != "pending" ]; then
 		log_debug "process_challenge: status ${_status}"
 		log "INFO" "process_challenge: order ${_chal} status ${_status}"
-		exit 0
+		exit 1
 	fi
 	set_challenge_field "${_chal}" '.status = "processing"'
 	if [ $? -ne 0 ]; then
 		log_debug "failed to set status to processing"
 		log "ERROR" "process_challenge: failed to set state of order ${_chal} to processing"
-		exit 0
+		exit 1
 	fi
 	_acct=`echo "${_chal}" | cut -f1 -d"_"`
 	challenges=`query_challenge_field "${_chal}" '.challenges[] | "\(.type):\(.status):\(.token)" // "" '`
 	if [ -z "${challenges}" ]; then
 		log "ERROR" "process_challenge: no challenges found for order ${_chal}"
-		exit 0
+		exit 1
 	fi
 	_order=`echo -n "${_chal}" | ${CUT} -f1-2 -d_`
 	_i=`echo -n "${_chal}" | ${CUT} -f4 -d_`
 	target=`query_order_field "${_order}" '.identifiers['${_i}'] | .value // ""'`
 	if [ -z "${target}" ]; then
 		log "ERROR" "process_challenge: no target found in indentifer for order ${_order}"
-		exit 0
+		exit 1
 	fi
 	# sanitize target
 	verify_dns_name "${target}"
 	if [ $? -ne 0 ]; then
 		log "ERROR" "process_challenge: target ${target} on invalid list for order ${_order}"
-		exit 0
+		exit 1
 	fi
 	log_debug "process_challenge: challenges: ${challenges} for target ${target}"
-	local _rc
 	# loop thru all challenges and try them
 	_i=0
-	for chal in ${challenges}; do
-		local typ=`echo "$chal" |cut -f1 -d:`
-		local chal_status=`echo "$chal" |cut -f2 -d:`
-		local token=`echo "$chal" |cut -f3 -d:`
-		local _ret
+	for _x in ${challenges}; do
+		local typ chal_status token
+		typ=`echo "$_x" |cut -f1 -d:`
+		chal_status=`echo "$_x" |cut -f2 -d:`
+		token=`echo "$_x" |cut -f3 -d:`
 		if [ "${chal_status}" == "valid" ]; then
 			# already validated the challenge...
 			log_debug "process_challenge: challenge already validated. skipping"
@@ -1269,23 +1270,26 @@ process_challenge() {
 			set_challenge_field "${_chal}" '.challenges['${_i}'].status = "invalid"'
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
+				log_debug "process error: ${_ret}"
 				_rc=1
 				break;
 			fi
 			set_challenge_field "${_chal}" '.status = "invalid"'
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
+				log_debug "process error: ${_ret}"
 				_rc=1
 				break;
 			fi
-			set_challenge_field "${_chal}" '.error = ("'${_ret}'" | fromjson)'
-#			set_challenge_field "${_order}" '.error = {"type":"connnect","desc":"error"}'
+#			set_challenge_field "${_chal}" '.error = ("'${_ret}'" | fromjson)'
+			set_challenge_field "${_chal}" '.error = {"type":"connnect","desc":"error"}'
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge error after unsuccessful test"
+				log_debug "process error: ${_ret}"
 				_rc=1
 				break;
 			fi
-			log "WARN" "process_challenge: ${_order} failed"
+			log "WARN" "process_challenge: ${_chal} failed"
 			_rc=1
 			break;
 		fi
@@ -1298,17 +1302,17 @@ process_challenge() {
 		set_challenge_field "${_chal}" '.challenges['${_i}'].status = "valid"'
 		if [ $? -ne 0 ]; then
 			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
-			return 1
+			exit 1
 		fi
 		set_challenge_field "${_chal}" '.status = "valid"'
 		if [ $? -ne 0 ]; then
 			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
-			return 1
+			exit 1
 		fi
 		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 $(get_epoch))'"'
 		if [ $? -ne 0 ]; then
 			log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
-			return 1
+			exit 1
 		fi
 		log "INFO" "process_challenge end: ${_chal}"
 		exit 0
@@ -1322,8 +1326,8 @@ return_error() {
 	local _hc=$1; shift
 	local _ec=$1; shift
 	local _msg=$*
-	local _t=`err_to_hc $_ec`
-	_hc=${_t:-$_hc}
+#	local _t=`err_to_hc $_ec`
+#	_hc=${_t:-$_hc}
 	log "ERROR" "${_ec}: ${_msg}"
 	set_header 'Content-Type: application/problem+json'
 	_BODY='{"type":"urn:ietf:params:acme:error:'${_ec}'","detail":"'${_msg}'"}'
@@ -1347,7 +1351,7 @@ return_result() {
 	for _h in "${_HEADERS[@]}"; do
 		echo "${_h}"
 	done
-# XXX this breaks things
+#XXX this breaks things
 #	echo "Content-Length: ${#_BODY}"
 	echo
 	# output a body if it exists
@@ -1404,6 +1408,7 @@ check_url() {
 #NOTE: see 6.5 and 6.5.1 and 7.2
 check_nonce() {
 	local _nt=0
+#XXX move date to a NOW() function
 	local _ct=`${DATE} +"%s"`
 	local _rc=1
 	local nonce=`query_req_field '.protected | .nonce'`
@@ -1432,6 +1437,7 @@ make_nonce() {
 	while [ $_f -ne 0 ]; do
 		_n=$(${OSSL} rand -hex 32)
 		if [ ! -f ${ACME_DIR}/nonce/${_n} ]; then
+#XXX move date to a NOW() function
 			${DATE} +"%s" >${ACME_DIR}/nonce/${_n}
 			set_header "Replay-Nonce: ${_n}"
 			return 0
@@ -1442,6 +1448,8 @@ make_nonce() {
 	return 1
 }
 
+# RETURN: 0 on success 1 on error
+# ECHO: error_class message
 verify_acct() {
 	local acct
 	local status
@@ -1537,9 +1545,15 @@ handle_account() {
 		if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
 			ore=`query_req_field '.payload | .onlyReturnExisting // ""'`
 			if [ ! -z "${ore}" -a "${ore}" == "true" ]; then
+				#NOTE: if this is the firest time the client is making the request, the account object
+				#      will not be created... but the PEM file has already been by validat_jws().  So
+				# 	   check and delete it if it's alone.
+				if [ -f ${ACME_DIR}/accts/${acct}.pem -a ! -f ${ACME_DIR}/accts/${acct} ]; then
+					${RM} -f ${ACME_DIR}/accts/${acct}.pem
+				fi
 				log_debug "handle_account: ignore new account creation per client request"
 				log "INFO" "Account lookup for ${acct} requested.  Does not exist."
-				return_error 200 "accountDoesNotExist" "account creation ignored at client request"
+				return_error 400 "accountDoesNotExist" "account creation ignored at client request"
 			fi
 			# check contacts
 			contacts=`query_req_field '.payload | .contact[] // ""'`
@@ -1550,7 +1564,13 @@ handle_account() {
 				# no return
 			fi
 			log_debug "handle_account: creating new account"
-			_BODY='{ "status": "valid", "orders": "'${ISSUER_URL}'/orders/'${acct}'", "termsOfServiceAgreed": "'$(query_req_field '.payload | .termsOfServiceAgreed')'", "contact": '$(query_req_field '.payload | .contact')', "jwk": '$(query_req_field '.protected | .jwk')' }'
+			_BODY='{
+"status": "valid", 
+"orders": "'${ISSUER_URL}'/orders/'${acct}'", 
+"termsOfServiceAgreed": "'$(query_req_field '.payload | .termsOfServiceAgreed')'", 
+"contact": '$(query_req_field '.payload | .contact')', 
+"jwk": '$(query_req_field '.protected | .jwk')'
+}'
 			echo "$_BODY" > ${ACME_DIR}/accts/${acct}
 			if [ $? -ne 0 ]; then
 				log_debug "handle_account: failed to save account"
@@ -1646,6 +1666,7 @@ handle_orders() {
 handle_key_change() {
 	log_debug "handle_key_change: return 405"
 	return_result 405 "Method Not Allowed"
+# NOT TESTED
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
@@ -1781,21 +1802,36 @@ handle_key_change() {
 handle_order() {
 	local acct
 	local status
+	local order
+	local auth_urls=""
+	local expire
+	local authz
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	log "INFO" "order request"
 	acct=`verify_acct` || return_error 400 ${acct}
-	local raw_identifiers=`query_req_field '.payload | .identifiers'`
-	local identifiers=`query_req_field '.payload | .identifiers[] | "\(.type):\(.value)"'`
-	local notBefore=`query_req_field '.payload | .noBefore // ""'`
-	local notAfter=`query_req_field '.payload | .noBefore // ""'`
+	order=`extract_id`
+	local _pl=`query_req_field '.payload // ""'`
+	# if payload is empty, then client is just looking for current status
+	if [ -z "${_pl}" ]; then
+		if [ ${ACME_DIR}/orders/${order} ]; then
+			log "ERROR" "order: unknown order ${order}"
+			return_error 400 "malformed" "Bad Request"
+			# no return
+		fi
+		_BODY=$(${CAT} ${ACME_DIR}/orders/${order})
+		return_success 200 "OK"
+		# no return
+	fi
+	# assume new order
 	local wildcard=`query_req_field '.payload | .wildcard // ""'`
-	local now=`get_epoch`
-	local max=$((${now}+${MAX_CERT_TIME}))
+	# check for wildcard request
 	if [ ! -z "${wildcard}" -a "$(lc ${wildcard})" == "true" ]; then
 		log "ERROR" "order: wildcard requested, not supported"
 		return_error 400 "rejectedIdentifier" "wildcards not supported"
 	fi
+	local now=`get_epoch`
+	local notBefore=`query_req_field '.payload | .noBefore // ""'`
 	if [ ! -z ${notBefore} ]; then
 		local nb=`rfc3339_to_epoch "${notBefore}"`
 		if [ ${nb} -gt ${now} ]; then
@@ -1804,6 +1840,8 @@ handle_order() {
 			return_error 400 "malformed" "Bad Request"
 		fi
 	fi
+	local max=$((${now}+${MAX_CERT_TIME}))
+	local notAfter=`query_req_field '.payload | .noBefore // ""'`
 	if [ ! -z ${notAfter} ]; then
 		local na=`rfc3339_to_epoch "${notAfter}"`
 		if [ ${na} -gt ${max} ]; then
@@ -1813,12 +1851,12 @@ handle_order() {
 		fi
 	fi
 	# verify we can handle the authz
-	local auth_urls=""
-	local expire order authz
+	local raw_identifiers=`query_req_field '.payload | .identifiers'`
+	local identifiers=`query_req_field '.payload | .identifiers[] | "\(.type):\(.value)"'`
 	order=`${OSSL} rand -hex 8`
 	local _i=0
 	for _id in ${identifiers}; do
-		local t=`echo "${_id}" | ${CUT} -f1 -d:`
+		local t=`echo "${_id}" | ${CUT} -f1 -d: | lc`
 		authz=`${OSSL} rand -hex 8`
 		case $t in
 			dns)
@@ -1836,8 +1874,7 @@ handle_order() {
 	expire=`epoch_to_rfc3339 $((${now}+${ORDER_EXPIRE}))`
 	notBefore=`epoch_to_rfc3339 ${now}`
 	notAfter=`epoch_to_rfc3339 ${max}`
-	make_nonce
-	set_header "Location: ${ISSUER_URL}/order/${order}"
+	set_header "Location: ${ISSUER_URL}/order/${acct}_${order}"
 	_BODY='{
   "status": "pending",
   "expires": "'${expire}'",
@@ -1907,11 +1944,16 @@ handle_authz() {
 		esac
 	else
 		log "INFO" "authz: create new challenge"
-		local token=`${OSSL} rand -hex 16`
-		local _i=$(echo -n "${authz}" | ${CUT} -f4 -d_)
-		local identifier=`query_order_field "${order}" ".identifiers[${_i}]"` || return_error 500 "serverInternal" "cannt retrieve identifires from order"
-		local expires=`query_order_field "${order}" ".expires"` || return_error 500 "serverInternal" "cannot retrieve expire from order"
-		local challenges='[
+		local identifier expires token _i challenges
+		token=`${OSSL} rand -hex 16`
+		_i=$(echo -n "${authz}" | ${CUT} -f4 -d_)
+		if [ -z "${_i}" ]; then
+			# error with index
+			#XXX return error
+		fi
+		identifier=`query_order_field "${order}" ".identifiers[${_i}]"` || return_error 500 "serverInternal" "cannt retrieve identifires from order"
+		expires=`query_order_field "${order}" ".expires"` || return_error 500 "serverInternal" "cannot retrieve expire from order"
+		challenges='[
 { "type": "http-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
 { "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" }
 ]'
@@ -1932,11 +1974,12 @@ handle_authz() {
 handle_challenge() {
 	local acct
 	local status
+	local authz
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "challenge: request"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-	local authz=`extract_id`
+	authz=`extract_id`
 	if [ -z "$authz" ]; then
 		log "ERROR" "challenge: no authz specified"
 		return_error 400 "malformed" "no order in url"
@@ -1946,6 +1989,7 @@ handle_challenge() {
 	if [ -f ${ACME_DIR}/challenges/${authz} ]; then
 		status=`query_challenge_field ${authz} '.status // ""'` || return_error 500 "serverInternal" "cannot find status"
 		log "INFO" "challenge: status ${status}"
+		# Check challenge status...
 		case "${status}" in
 			"pending")
 				set_header "Retry-After: ${CLIENT_RETRY}"
@@ -1959,6 +2003,7 @@ handle_challenge() {
 				log "INFO" "challenge: calling process"
 				# call ourselves to process the order
 				$0 -x ${authz}
+				# actaully return!
 				;;
 			"processing")
 				# still trying
@@ -2013,11 +2058,12 @@ handle_finalize() {
 	local status
 	local _csr
 	local _ret
+	local order
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "finalize: process"
 	# abusing the acct response
 	acct=`verify_acct` || return_error 400 ${acct}
-	local order=`extract_id`
+	order=`extract_id`
 	if [ -z "$order" ]; then
 		log "ERROR" "finalize: no order specified"
 		return_error 400 "malformed" "no order in url"
@@ -2047,6 +2093,7 @@ handle_finalize() {
 					log "ERROR" "finalize: cannot retreive identifiers from order"
 					return_error 500 "serverInternal" "error retreiving identifiers"
 				fi
+				# verify that the requested identifiers are in the cert... no more / no less
 				verify_cert_req "${ACME_DIR}/certs/${order}.req" "${_identifiers}"
 				if [ $? -ne 0 ]; then
 					echo "process_csr: bad csr request"
@@ -2058,6 +2105,7 @@ handle_finalize() {
 					return_error 400 "badCSR" "${_ret}"
 					# no return
 				fi
+				# set the path to query the certificate
 				set_order_field "${order}" '.certificate = "'${ISSUER_URL}'/certificate/'${order}'"'
 				if [ $? -ne 0 ]; then
 					log "ERROR" "could not set certificate link on order ${order}"
@@ -2106,6 +2154,7 @@ handle_finalize() {
 handle_certificate() {
 	local acct
 	local status
+	local order
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "certificate: process"
 	# abusing the acct response
@@ -2318,6 +2367,7 @@ case "$DOCUMENT_URI" in
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
         handle_challenge
+		# no return
         ;;
 	*"/finalize"*)
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
@@ -2325,6 +2375,7 @@ case "$DOCUMENT_URI" in
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
         handle_finalize
+		# no return
         ;;
 	*"/certificate"*)
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
@@ -2332,6 +2383,7 @@ case "$DOCUMENT_URI" in
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
         handle_certificate
+		# no return
         ;;
 	*"/revoke"*)
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
@@ -2339,6 +2391,7 @@ case "$DOCUMENT_URI" in
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
 		handle_revoke
+		# no return
         ;;
 	*"/keychange"*)
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
