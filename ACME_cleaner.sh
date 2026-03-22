@@ -43,7 +43,7 @@ find_conf() {
     echo ""
 }
 
-get_epoch() {
+now_epoch() {
 	local _e
 	case `${UNAME}` in
 		Linux)
@@ -75,7 +75,7 @@ rfc3339_to_epoch() {
 	echo "${_e}"
 }
 
-NOW=`get_epoch`
+NOW=`now_epoch`
 
 conf=`find_conf`
 if [ -z "$conf" ]; then
@@ -102,6 +102,12 @@ done
 # clean up old orders
 echo "cleaning up orders..."
 for _o in `${LS} ${ACME_DIR}/orders`; do
+	if [ ! -s "${_o}" ]; then
+		# we know the file exists becuse it was in the 'ls'
+		# if file is zero size, just delete
+		${RM} -f "${_o}"
+		continue
+	fi
 	_s=`${CAT} ${ACME_DIR}/orders/${_o} | ${JQ} -cr '.status'`
 	case ${_s} in
 		invalid)
@@ -124,6 +130,12 @@ done
 # clean up old challenges
 echo "cleaning up challenges..."
 for _o in `${LS} ${ACME_DIR}/challenges`; do
+	if [ ! -s "${_o}" ]; then
+		# we know the file exists becuse it was in the 'ls'
+		# if file is zero size, just delete
+		${RM} -f "${_o}"
+		continue
+	fi
 	_s=`${CAT} ${ACME_DIR}/challenges/${_o} | ${JQ} -cr '.status'`
 	case ${_s} in
 		invalid)
@@ -145,23 +157,29 @@ done
 
 # look for deactivated accounts
 echo "cleaning up accounts..."
-for _a in `${LS} ${ACME_DIR}/accts`; do
+for _o in `${LS} ${ACME_DIR}/accts`; do
+	if [ ! -s "${_o}" ]; then
+		# we know the file exists becuse it was in the 'ls'
+		# if file is zero size, just delete
+		${RM} -f "${_o}"
+		continue
+	fi
 	
-	if [ ${_a%%.pem} != ${_a} ]; then
+	if [ ${_o%%.pem} != ${_o} ]; then
 		# skip PEM files
 		continue
 	fi
-	status=$(cat ${ACME_DIR}/accts/${_a} | ${JQ} -cr '.status')
+	status=$(cat ${ACME_DIR}/accts/${_o} | ${JQ} -cr '.status')
 	case ${status} in
 		deactivated)
 			# delete all requests and certs
-			echo "removing certs for deactivated account ${ACME_DIR}/certs/${_a}"
-			${RM} -f ${ACME_DIR}/certs/${_a}_*.pem
-			${RM} -f ${ACME_DIR}/certs/${_a}_*.req
+			echo "removing certs for deactivated account ${ACME_DIR}/certs/${_o}"
+			${RM} -f ${ACME_DIR}/certs/${_o}_*.pem
+			${RM} -f ${ACME_DIR}/certs/${_o}_*.req
 			# delete the account
-			echo "removing deactivated account ${ACME_DIR}/account/${_a}"
-			${RM} -f ${ACME_DIR}/accts/${_a}.pem
-			${RM} -f ${ACME_DIR}/accts/${_a}
+			echo "removing deactivated account ${ACME_DIR}/account/${_o}"
+			${RM} -f ${ACME_DIR}/accts/${_o}.pem
+			${RM} -f ${ACME_DIR}/accts/${_o}
 			;;
 	esac
 done
