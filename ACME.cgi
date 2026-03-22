@@ -1791,7 +1791,7 @@ handle_order() {
 	local acct status order expire authz now nb max na
 	local notBefore notAfter
 	local raw_identifiers identifiers _pl wildcard _i t
-	local auth_urls=""
+	typeset auth_urls
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	log "INFO" "order request"
@@ -1846,7 +1846,7 @@ handle_order() {
 		authz=$(${OSSL} rand -hex 8)
 		case "$t" in
 			dns)
-				auth_urls="${auth_urls}\"${ISSUER_URL}/authz/${acct}_${order}_${authz}_${_i}\" "
+				auth_urls[${_i}]="\"${ISSUER_URL}/authz/${acct}_${order}_${authz}_${_i}\""
 				;;
 			*)
 				log "ERROR" "order: unhandled idnetifier ${t}"
@@ -1854,9 +1854,8 @@ handle_order() {
 				# no return
 				;;
 		esac
-		_i=$((_i+1))
+		_i=$((_i + 1))
 	done
-	auth_urls="[ $(echo "${auth_urls}" | ${SED} -r -e 's/(.*) ?$/\1/' -e 's/ /,/' ) ]"
 	expire=$(epoch_to_rfc3339 "$((now + ORDER_EXPIRE))")
 	notBefore=$(epoch_to_rfc3339 "${now}")
 	notAfter=$(epoch_to_rfc3339 "${max}")
@@ -1867,7 +1866,7 @@ handle_order() {
   "notBefore": "'${notBefore}'",
   "notAfter": "'${notAfter}'",
   "identifiers": '${raw_identifiers}',
-  "authorizations" : '${auth_urls}',
+  "authorizations" : ['$(echo "${auth_urls[@]}" | ${SED} -r 's/ /,/')'],
   "finalize": "'${ISSUER_URL}'/finalize/'${acct}'_'${order}'"
 }'
 	echo "${_BODY}" > "${ACME_DIR}/orders/${acct}_${order}"
