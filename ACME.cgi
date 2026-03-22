@@ -1106,7 +1106,14 @@ process_http01_request() {
 	fi
 	_tmpfile=$(${MKTEMP} -t "acme-challenge-${_host}.XXXXXXXX") || return 99
 	while [ "${_retry}" -gt 0 ]; do
-#		_resp=$(${HTTPLOOKUP} -w ${_timout} -U "ACME.cgi challenge test" -o ${_tmpfile} "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1)
+		#NOTE: per RFC8555 fetching challenge over http:// and not https://.  The requestor
+		#		has been validated over the https:// request prior to this step and a challenge
+		#		token has been exchanged.  The token + the requstors thumbprint (neither of which)
+		#		were sent in clear text, must be returned.  While it may be technically possible
+		#		for an attacker in the middle, guess the token + thumbprint, it is not likely.
+		#		In addition, the requestor is assumed to not have a certificate (or else why
+		#		would they request one.  As such, we have a chicken/egg problem if we were
+		#		to request using https.
 		_resp=$(${HTTPLOOKUP} --silent --connect-timeout "${_timout}" -A "ACME.cgi challenge test" -o "${_tmpfile}" "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1)
 		if [ $? -ne 0 ]; then
 			log_debug "process_http01_request: error looking up record. ${_resp}"
