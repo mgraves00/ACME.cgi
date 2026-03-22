@@ -1975,7 +1975,7 @@ handle_challenge() {
 	fi
 	log "INFO" "challenge: authz ${authz}"
 	if [ -f "${ACME_DIR}/challenges/${authz}" ]; then
-		status=$(query_challenge_field "${authz}" '.status // ""') return_error 500 "serverInternal" "cannot find status"
+		status=$(query_challenge_field "${authz}" '.status // ""') || return_error 500 "serverInternal" "cannot find status"
 		log "INFO" "challenge: status ${status}"
 		# Check challenge status...
 		case "${status}" in
