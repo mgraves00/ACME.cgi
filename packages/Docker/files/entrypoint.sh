@@ -45,6 +45,7 @@ if [ ! -d "${PCA_ROOT}/${CA_NAME}" ]; then
 	pca ${CA_NAME} config set ext -name extension_acme -a -key subjectKeyIdentifier -value hash
 	pca ${CA_NAME} config set ext -name extension_acme -a -key authorityKeyIdentifier -value keyid
 	pca ${CA_NAME} config set ext -name extension_acme -a -key extendedKeyUsage -value serverAuth,clientAuth
+	pca ${CA_NAME} config set pol -name policy_sign -key commonName -value optional
 	echo "creating Root cert"
 	pca ${CA_NAME} create root -days 4000 -bits 4096 -cn "${CA_NAME} Root CA"
 	echo "creating ACME RA cert"
