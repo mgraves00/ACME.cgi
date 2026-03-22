@@ -56,7 +56,8 @@ DEFAULT_DAYS=${DEFAULT_DAYS:-90}
 DEVNUL=${DEVNUL:-"/dev/null"}
 
 # send all stderr to DEVNUL file
-exec 2>>"${DEVNUL}"
+#this is throwing an error... commend out for now
+#exec 2>"${DEVNUL}"
 
 if [ $# -lt 1 ]; then
 	echo "${PROG_NAME} <command> <options>"
