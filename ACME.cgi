@@ -1394,12 +1394,17 @@ check_url() {
 #RETURN: if exists remove and return 0, else return 1
 #NOTE: see 6.5 and 6.5.1 and 7.2
 check_nonce() {
-	local _nt _ct _rc nonce
+	local _nt _ct _rc nonce _t
 	_nt=0
 	_ct=$(now_epoch)
 	_rc=1
 	nonce=$(query_req_field '.protected | .nonce')
 	if [ -z "${nonce}" ]; then
+		return $_rc
+	fi
+	_t=$(echo -n "${nonce}" | ${TR} -d '[:alnum:]')
+	if [ -n "${_t}" ]; then
+		# nonce name has invalid characters
 		return $_rc
 	fi
 	if [ -f "${ACME_DIR}/nonce/${nonce}" ]; then
