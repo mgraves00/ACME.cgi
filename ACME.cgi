@@ -2282,7 +2282,7 @@ set -o noglob
 
 # if we are called with -x ordernumber, close all stdin,stdout,stderr and background ourselves
 if [ $# -gt 1 -a "$1" == "-x" ]; then
-	( cd /; 0<&-; 1>&-; 2>&-; process_challenge "$2") &
+	( cd /; exec 0<&- 1>&- 2>&-; process_challenge "$2") &
 	exit 0
 fi
 
