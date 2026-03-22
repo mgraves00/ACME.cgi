@@ -29,7 +29,6 @@
 PCA=$(which pca)
 OSSL=$(which openssl)
 CUT=$(which cut)
-GREP=$(which grep)
 
 find_conf() {
 	local _f
@@ -42,12 +41,12 @@ find_conf() {
 	echo ""
 }
 
-conf=`find_conf`
+conf=$(find_conf)
 if [ -z "${conf}" ]; then
 	echo "Status: 500 config not found"
 	exit 1
 else
-	. ${conf}
+	. "${conf}"
 fi
 
 PROG_NAME=${0##*/}
@@ -57,7 +56,7 @@ DEFAULT_DAYS=${DEFAULT_DAYS:-90}
 DEVNUL=${DEVNUL:-"/dev/null"}
 
 # send all stderr to DEVNUL file
-exec 2>>${DEVNUL}
+exec 2>>"${DEVNUL}"
 
 if [ $# -lt 1 ]; then
 	echo "${PROG_NAME} <command> <options>"
@@ -74,7 +73,7 @@ case "$CMD" in
 		DAYS=${1:-${DEFAULT_DAYS}}
 		REQNAME=${REQFILE##*/}
 		REQNAME=${REQNAME%%.req}
-		if [ ! -f ${REQFILE} ]; then
+		if [ ! -f "${REQFILE}" ]; then
 			echo "${PROG_NAME}: cannot find request file ${REQFILE}"
 			exit 1
 		fi
@@ -83,19 +82,19 @@ case "$CMD" in
 			exit 1
 		fi
 		# import req
-		PCA_ROOT=${PCA_ROOT} ${PCA} ${CA_NAME} import request -name ${REQNAME} -file ${REQFILE} 2>&1
+		PCA_ROOT=${PCA_ROOT} ${PCA} "${CA_NAME}" import request -name "${REQNAME}" -file "${REQFILE}" 2>&1
 		if [ $? -ne 0 ]; then
 			echo "${PROG_NAME}: error importing request"
 			exit 1
 		fi
 		# sign req
-		PCA_ROOT=${PCA_ROOT} ${PCA} ${CA_NAME} sign -days ${DAYS} -name ${REQNAME} -ext extension_acme 2>&1
+		PCA_ROOT=${PCA_ROOT} ${PCA} "${CA_NAME}" sign -days "${DAYS}" -name "${REQNAME}" -ext extension_acme 2>&1
 		if [ $? -ne 0 ]; then
 			echo "${PROG_NAME}: error signing request"
 			exit 1
 		fi
 		# extract the CERT
-		PCA_ROOT=${PCA_ROOT} ${PCA} ${CA_NAME} export cert -name ${REQNAME} -file ${CRTFILE} -overwrite -chain 2>&1
+		PCA_ROOT=${PCA_ROOT} ${PCA} "${CA_NAME}" export cert -name "${REQNAME}" -file "${CRTFILE}" -overwrite -chain 2>&1
 		if [ $? -ne 0 ]; then
 			echo "${PROG_NAME}: error exporting cert"
 			exit 1
@@ -105,12 +104,12 @@ case "$CMD" in
 		CRTFILE=$1; shift
 		local _serial
 		local _out
-		_serial=`${OSSL} x509 -in ${CRTFILE} -noout -serial | ${CUT} -f2 -d=`
+		_serial=$(${OSSL} x509 -in "${CRTFILE}" -noout -serial | ${CUT} -f2 -d=)
 		if [ $? -ne 0 -o -z "${_serial}" ]; then
 			echo "${PROG_NAME}: error extracting serial"
 			exit 1
 		fi
-		_out=`PCA_ROOT=${PCA_ROOT} ${PCA} ${CA_NAME} revoke -serial ${_serial} 2>&1`
+		_out=$(PCA_ROOT=${PCA_ROOT} ${PCA} "${CA_NAME}" revoke -serial "${_serial}" 2>&1)
 		if [ $? -ne 0 ]; then
 			# filter out all except the "error" line
 			echo "${PROG_NAME}: error revoke: ${_out}"
