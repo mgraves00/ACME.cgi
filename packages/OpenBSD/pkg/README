@@ -40,6 +40,10 @@ behind webserver) there are several programs that are required.
 	install -c -m 0644 -o root -g bin /usr/local/lib/libonig.so.* /var/www/usr/local/lib
 	# refresh ld.hints
 	chroot /var/www ldconfig -v -s /usr/lib /usr/local/lib
+	# create /dev/null in chroot
+	mkdir -p /var/www/dev
+	mknod /var/www/dev/null c 2 2
+	chmod 666 /var/www/dev/null
 
 # Enable slowcgi
 	rcctl enable slowcgi
