@@ -71,9 +71,10 @@ log_debug() {
 }
 
 log() {
-	local _sev=$1; shift;
-	local _d=`now_epoch`
-	local _h=${HTTP_X_FORWARDED_FOR:-${REMOTE_ADDR:-"unknown"}}
+	local _sev _d _h
+	_sev=$1; shift;
+	_d=$(now_epoch)
+	_h=${HTTP_X_FORWARDED_FOR:-${REMOTE_ADDR:-"unknown"}}
     echo "$(epoch_to_rfc3339 "${_d}") [${_sev}] ${_h} $*" >>"$LOG_FILE"
 }
 
@@ -176,7 +177,7 @@ lc() {
 }
 
 clean_content() {
-	if [ ! -z "${_REQ_FILE}" -a -f "${_REQ_FILE}" ]; then
+	if [ -n "${_REQ_FILE}" -a -f "${_REQ_FILE}" ]; then
 		${RM} -f "${_REQ_FILE}"
 	fi
 }
@@ -189,10 +190,10 @@ rfc3339_to_epoch() {
 	fi
 	case $(${UNAME}) in
 		Linux)
-			_e=`${DATE} +"%s" -d "$1"`
+			_e=$(${DATE} +"%s" -d "$1")
 			;;
 		*)
-			_e=`${DATE} -j -f "%Y-%m-%dT%H:%M:%S%z" +"%s" "$1"`
+			_e=$(${DATE} -j -f "%Y-%m-%dT%H:%M:%S%z" +"%s" "$1")
 			;;
 	esac
 	if [ -z "${_e}" ]; then
@@ -208,11 +209,11 @@ epoch_to_rfc3339() {
 	fi
 	case $(${UNAME}) in
 		Linux)
-			_e=`${DATE} +"%Y-%m-%dT%H:%M:%SZ" -d "@$1"`
+			_e=$(${DATE} +"%Y-%m-%dT%H:%M:%SZ" -d "@$1")
 			;;
 		*)
-			_o=`${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%SZ"`
-#			_o=`${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%S%z"`
+			_o=$(${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%SZ")
+#			_o=$(${DATE} -j -r "$1" +"%Y-%m-%dT%H:%M:%S%z")
 			;;
 	esac
 	echo "${_o}"
@@ -222,10 +223,10 @@ now_epoch() {
 	local _e
 	case $(${UNAME}) in
 		Linux)
-			_e=`${DATE} +"%s"`
+			_e=$(${DATE} +"%s")
 			;;
 		*)
-			_e=`${DATE} -j +"%s"`
+			_e=$(${DATE} -j +"%s")
 			;;
 	esac
 	echo "${_e}"
@@ -246,11 +247,11 @@ _der_int() {
     local hex=$1
 	local len
 	# remove leading zero bytes
-	while [ "${#hex}" -gt 2 ] && [ $(echo -n "${hex}" | cut -c1-2) == "00" ]; do
+	while [ "${#hex}" -gt 2 ] && [ "$(echo -n "${hex}" | ${CUT} -c1-2)" == "00" ]; do
 		hex=$(echo -n "${hex}" | cut -c3-)
 	done
 	# if high bit set, prepend 00 so integer stays positive
-	[ $(( 0x$(echo -n "$hex" | cut -c1-2) )) -ge 128 ] && hex="00${hex}"
+	[ $(( 0x$(echo -n "$hex" | ${CUT} -c1-2) )) -ge 128 ] && hex="00${hex}"
     len=$(( ${#hex} / 2 ))
     ${PRINTF} "02%s%s" "$(_der_len "$len")" "$hex"
 }
@@ -259,43 +260,49 @@ _der_bitstring() {
     ${PRINTF} "03%s%s" "$(_der_len "$len")" "$inner"
 }
 _der_octetstring() {
-    local len=$(( ${#1} / 2 ))
+    local len
+	len=$(( ${#1} / 2 ))
     ${PRINTF} "04%s%s" "$(_der_len "$len")" "$1"
 }
 _der_oid() {
-    local len=$(( ${#1} / 2 ))
+    local len
+	len=$(( ${#1} / 2 ))
     ${PRINTF} "06%s%s" "$(_der_len "$len")" "$1"
 }
 _der_ctx0() {
-    local len=$(( ${#1} / 2 ))
+    local len
+	len=$(( ${#1} / 2 ))
     ${PRINTF} "a0%s%s" "$(_der_len "$len")" "$1"
 }
 _der_ctx1() {
-    local len=$(( ${#1} / 2 ))
+    local len
+	len=$(( ${#1} / 2 ))
     ${PRINTF} "a1%s%s" "$(_der_len "$len")" "$1"
 }
 _hex_pad() {
-    local hex=$1 target=$(( $2 * 2 ))
-    while [ ${#hex} -lt "$target" ]; do hex="00${hex}"; done
+    local hex target
+	hex=$1 target=$(( $2 * 2 ))
+    while [ "${#hex}" -lt "$target" ]; do hex="00${hex}"; done
     ${PRINTF} "%s" "$hex"
 }
 # variables cannot store null bytes. this means we can only pass the data thru
 _bin_to_hex() {
-#	local _s=$1
+#	local _s
+#	_s=$@
 #	if [ ${#_s} -eq 0 ]; then
 #		_s=$(${CAT})
 #	fi
-#	echo -n "$_s" | ${OD} -A n -v -t x1 | ${TR} -d '\r\t\n '
+#	echo -n "${_s}" | ${OD} -A n -v -t x1 | ${TR} -d '\r\t\n '
 	${OD} -A n -v -t x1 | ${TR} -d '\r\t\n '
 }
 #NOTE: outputs binary stream
 _hex_to_bin() {
-	local _s=$1
-	local _h
+	local _s _h
+	_s=$*
 	if [ ${#_s} -eq 0 ]; then
 		_s=$(${CAT})
 	fi
-	for _h in $(echo -n "$_s" | ${SED} 's/\([0-9a-fA-F]\{2\}\)/ \1/g'); do
+	for _h in $(echo -n "${_s}" | ${SED} 's/\([0-9a-fA-F]\{2\}\)/ \1/g'); do
 		${PRINTF} "\x${_h}"
 	done
 }
@@ -354,10 +361,10 @@ _jwk_ec_public_pem() {
 
 #NOTE: outputs binary stream.
 sig_to_der() {
-	local _s=$1; shift
-	local _b=${1:-ES256}
-	local _sz=0
-	local h1 h2
+	local h1 h2 _s _b _sz
+	_s=$1; shift
+	_b=${1:-ES256}
+	_sz=0
 	if [ -z "${_s}" ]; then
 		log_debug "s2d: unable to read string"
 		return 1
@@ -365,21 +372,21 @@ sig_to_der() {
 	_s=$(echo -n "$_s" | url_unprotect | ${OSSL} enc -a -A -d | _bin_to_hex)
 	case "${_b}" in
 		ES256)
-			if [ ${#_s} -ne 128 ]; then
+			if [ "${#_s}" -ne 128 ]; then
 				log_debug "invalid signature size 128 != ${#_s}"
 				return 1
 			fi
 			_sz=64
 			;;
 		ES384)
-			if [ ${#_s} -ne 192 ]; then
+			if [ "${#_s}" -ne 192 ]; then
 				log_debug "invalid signature size 192 != ${#_s}"
 				return 1
 			fi
 			_sz=96
 			;;
 		ES521)
-			if [ ${#_s} -ne 264 ]; then
+			if [ "${#_s}" -ne 264 ]; then
 				log_debug "invalid signature size 264 != ${#_s}"
 				return 1
 			fi
@@ -393,15 +400,15 @@ sig_to_der() {
 			return 1
 			;;
 	esac
-	if [ ${_sz} -eq 0 ]; then
+	if [ "${_sz}" -eq 0 ]; then
 		log_debug "s2b size not set"
 		return 1
 	fi
 	case "${_b}" in
 		ES*)
-			h1=`echo -n "${_s}" | ${CUT} -c1-${_sz}`
-			h2=`echo -n "${_s}" | ${CUT} -c$((${_sz}+1))-`
-			_s=$(_der_seq $(_der_int ${h1})$(_der_int ${h2}))
+			h1=$(echo -n "${_s}" | ${CUT} -c1-${_sz})
+			h2=$(echo -n "${_s}" | ${CUT} -c$((_sz+1))-)
+			_s=$(_der_seq "$(_der_int "${h1}")$(_der_int "${h2}")")
 			;;
 		RS*)
 			# just output signature
@@ -412,9 +419,10 @@ sig_to_der() {
 }
 
 extract_id() {
-	local _id=${1:-${REQUEST_URI}}
-	local _r=${_id##*/}
-	local _cmp=`echo -n "$_r" | ${SED} -nr '/^[a-zA-Z0-9_-]+$/p'`
+	local _id _r _cmp
+	_id=${1:-${REQUEST_URI}}
+	_r=${_id##*/}
+	_cmp=$(echo -n "$_r" | ${SED} -nr '/^[a-zA-Z0-9_-]+$/p')
 	if [ -z "${_cmp}" ]; then
 		log_debug "extract_id: error id: '$_r'"
 		return_error 400 "malformed" "invalid id"
@@ -426,13 +434,13 @@ extract_id() {
 read_content() {
 	local _sz
 	local _encstr
-	if [ ! -z "${CONTENT_LENGTH}" ]; then
-		if [ ${CONTENT_LENGTH} -gt ${MAX_REQUEST_SIZE} ]; then
+	if [ -n "${CONTENT_LENGTH}" ]; then
+		if [ "${CONTENT_LENGTH}" -gt "${MAX_REQUEST_SIZE}" ]; then
 			log "ERROR" "content size exceeded max size: ${CONTENT_LENGTH} too large"
 			return_error 413 "malformed" "request too large"
 			# no return
 		fi
-		_REQ_FILE=`${MKTEMP} -t "acme-XXXXXX.json"`
+		_REQ_FILE=$(${MKTEMP} -t "acme-XXXXXX.json")
 		if [ $? -ne 0 ]; then
 			log "ERROR" "read_content: error createing tmp file"
 			return_error 500 "serverInternal" "error creating tmp file"
@@ -440,8 +448,8 @@ read_content() {
 		fi
 		log_debug "read_content: _REQ_FILE=${_REQ_FILE}"
 		# NOTE: relying on http server to actually limit the max size of the request
-		${CAT} - >${_REQ_FILE}
-		_sz=$(${CAT} ${_REQ_FILE} | ${WC} -c | ${TR} -d ' ')
+		${CAT} - >"${_REQ_FILE}"
+		_sz=$(${CAT} "${_REQ_FILE}" | ${WC} -c | ${TR} -d ' ')
 		if [ "${CONTENT_LENGTH}" -ne "${_sz}" ]; then
 			log "ERROR" "read_content: content_length: ${CONTENT_LENGTH} != content_size: ${_sz}"
 			return_error 413 "malformed" "Content Size Mismatch"
@@ -449,15 +457,15 @@ read_content() {
 		fi
 		log_debug "read_content: content size ${_sz}"
 		# save the protect and payload in base64 for validating jwk
-		_JWK64=$(${CAT} ${_REQ_FILE} | ${JQ} -cr '(.protected // "") + "." + (.payload // "")')
+		_JWK64=$(${CAT} "${_REQ_FILE}" | ${JQ} -cr '(.protected // "") + "." + (.payload // "")')
 		# decode the base64 encodings
-		_encstr=$(${CAT} ${_REQ_FILE} | ${JQ} -r '.protected = (.protected | @base64d | fromjson) | .payload = try (.payload | @base64d | fromjson) catch ""')
+		_encstr=$(${CAT} "${_REQ_FILE}" | ${JQ} -r '.protected = (.protected | @base64d | fromjson) | .payload = try (.payload | @base64d | fromjson) catch ""')
 		if [ $? -ne 0 ]; then
 			log "ERROR" "read_content: error decoding content"
 			return_error  413 "malformed" "error decoding b64"
 			# no return
 		fi
-		echo "${_encstr}" >${_REQ_FILE}
+		echo "${_encstr}" >"${_REQ_FILE}"
 		if [ $? -ne 0 ]; then
 			log "ERROR" "read_content: error saving content"
 			return_error  413 "malformed" "error saving request"
@@ -479,13 +487,13 @@ url_protect() {
 
 # see rfc8555 sec 6.1 and rfc4648 sec 5
 url_unprotect() {
-	local _s
+	local _s _l
 	if [ $# -eq 0 ]; then
 		_s=$(${CAT})
 	else
 		_s=$*
 	fi
-	local _l=$((${#_s} % 4))
+	_l=$((${#_s} % 4))
 	if [ $_l -eq 2 ]; then
 		_s="${_s}=="
 	elif [ $_l -eq 3 ]; then
@@ -496,9 +504,9 @@ url_unprotect() {
 
 #NOTE: investigate a file locking scheme
 set_file_field() {
-	local _file=$1
-	local _f=$2
-	local _res
+	local _file _f _res
+	_file=$1
+	_f=$2
 	if [ -z "${_file}" ]; then
 		log_debug "set_file_filed: no file given"
 		return 1
@@ -507,12 +515,12 @@ set_file_field() {
 		log_debug "set_file_field: no file ${_file}"
 		return 1
 	fi
-	_res=`${CAT} ${_file} | ${JQ} -cr "${_f}"`
+	_res=$(${CAT} "${_file}" | ${JQ} -cr "${_f}")
 	if [ $? -ne 0 ]; then
 		log_debug "set_file_field: error setting field ${_f} from ${_file}"
 		return 1
 	fi
-	echo "${_res}" >${_file}
+	echo "${_res}" >"${_file}"
 	if [ $? -ne 0 ]; then
 		log_debug "set_file_field: error saving file ${_file}"
 	fi
@@ -520,9 +528,9 @@ set_file_field() {
 }
 
 query_file_field() {
-	local _file=$1;
-	local _f=$2;
-	local _res
+	local _file _f _res
+	_file=$1;
+	_f=$2;
 	if [ -z "${_file}" ]; then
 		log_debug "query_file_field: no file given"
 		echo ""
@@ -533,7 +541,7 @@ query_file_field() {
 		echo ""
 		return 1
 	fi
-	_res=`${CAT} ${_file} | ${JQ} -cr "${_f}"`
+	_res=$(${CAT} "${_file}" | ${JQ} -cr "${_f}")
 	if [ $? -ne 0 ]; then
 		log_debug "query_file_field: error fetching field '${_f}' from ${_file}"
 #cat ${_file} >&2
@@ -545,10 +553,9 @@ query_file_field() {
 }
 
 query_req_field() {
-	local _f=$1
-	local _rc
-	local _res
-	_res=`query_file_field "${_REQ_FILE}" "${_f}"`
+	local _f _rc _res
+	_f=$1
+	_res=$(query_file_field "${_REQ_FILE}" "${_f}")
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
@@ -557,11 +564,10 @@ query_req_field() {
 }
 
 query_account_field() {
-	local _n=$1
-	local _f=$2
-	local _rc
-	local _res
-	_res=`query_file_field "${ACME_DIR}/accts/${_n}" "${_f}"`
+	local _n _f _rc _res
+	_n=$1
+	_f=$2
+	_res=$(query_file_field "${ACME_DIR}/accts/${_n}" "${_f}")
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
@@ -570,11 +576,10 @@ query_account_field() {
 }
 
 query_order_field() {
-	local _n=$1
-	local _f=$2
-	local _rc
-	local _res
-	_res=`query_file_field "${ACME_DIR}/orders/${_n}" "${_f}"`
+	local _n _f _rc _res
+	_n=$1
+	_f=$2
+	_res=$(query_file_field "${ACME_DIR}/orders/${_n}" "${_f}")
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
@@ -583,11 +588,10 @@ query_order_field() {
 }
 
 query_challenge_field() {
-	local _n=$1
-	local _f=$2
-	local _rc
-	local _res
-	_res=`query_file_field "${ACME_DIR}/challenges/${_n}" "${_f}"`
+	local _n _f _rc _res
+	_n=$1
+	_f=$2
+	_res=$(query_file_field "${ACME_DIR}/challenges/${_n}" "${_f}")
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
@@ -596,11 +600,10 @@ query_challenge_field() {
 }
 
 set_account_field() {
-	local _n=$1
-	local _f=$2
-	local _rc
-	local _res
-	_res=`set_file_field "${ACME_DIR}/accts/${_n}" "${_f}"`
+	local _n _f _rc _res
+	_n=$1
+	_f=$2
+	_res=$(set_file_field "${ACME_DIR}/accts/${_n}" "${_f}")
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
@@ -608,11 +611,10 @@ set_account_field() {
 }
 
 set_order_field() {
-	local _n=$1
-	local _f=$2
-	local _rc
-	local _res
-	_res=`set_file_field "${ACME_DIR}/orders/${_n}" "${_f}"`
+	local _n _f _rc _res
+	_n=$1
+	_f=$2
+	_res=$(set_file_field "${ACME_DIR}/orders/${_n}" "${_f}")
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
@@ -620,11 +622,10 @@ set_order_field() {
 }
 
 set_challenge_field() {
-	local _n=$1
-	local _f=$2
-	local _rc
-	local _res
-	_res=`set_file_field "${ACME_DIR}/challenges/${_n}" "${_f}"`
+	local _n _f _rc _res
+	_n=$1
+	_f=$2
+	_res=$(set_file_field "${ACME_DIR}/challenges/${_n}" "${_f}")
 	if [ $? -ne 0 ]; then
 		return 1
 	fi
@@ -633,75 +634,75 @@ set_challenge_field() {
 
 #NOTE: return comma separated list
 extract_san() {
-	local _reqfile=$1
-	local _typ=${2:-"x509"}
-	local _sans
-	if [ -z "${_reqfile}" -o ! -f ${_reqfile} ]; then
+	local _sans _reqfile _typ
+	_reqfile=$1
+	_typ=${2:-"x509"}
+	if [ -z "${_reqfile}" -o ! -f "${_reqfile}" ]; then
 		log_debug "extact_san: cannot find request file"
 		return 1
 	fi
-	_sans=`${OSSL} ${_typ} -in ${_reqfile} -noout -text | \
+	_sans=$(${OSSL} "${_typ}" -in "${_reqfile}" -noout -text | \
 			${SED} -n '/Subject Alternative Name/,/Signature Algorithm/p' | \
 			${SED} -e '/Subject Alternative Name/d' -e '/Signature Algorithm/d' | \
-			${TR} -d "\t "`
-	echo ${_sans}
+			${TR} -d "\t ")
+	echo "${_sans}"
 	return 0
 }
 
 verify_dns_name() {
-	local _dns=$1
-	local _t _p
-	_dns=`lc "${_dns}"`
+	local _dns _t _p
+	_dns=$1
+	_dns=$(lc "${1}")
 	# error on records with '*'
-	_t=`echo ${_dns} | ${TR} -d '*'`
+	_t=$(echo "${_dns}" | ${TR} -d '*')
 	if [ "${_dns}" != "${_t}" ]; then
 		log_debug "verify_dns_name: found wildcard SAN"
 		return 1
 	fi
 	# check for invalid characters
-	_t=`echo -n "${_dns}" | ${TR} -d '[:print:]'`
-	if [ ! -z "${_t}" ]; then
+	_t=$(echo -n "${_dns}" | ${TR} -d '[:print:]')
+	if [ -n "${_t}" ]; then
 		log_debug "verify_dns_name: found non-printable characters: ${_dns} <=> ${_t}"
 		return 1
 	fi
 	# make sure that no portion of the domain is > 63 characters
 	for _p in $(echo -n "${_dns}" | ${TR} '.' '\n'); do
-		if [ ${#_p} -gt 63 ]; then
+		if [ "${#_p}" -gt 63 ]; then
 			log_debug "verify_dns_name: name part >63 characters"
 			return 1
 		fi
-		if [ ${#_p} -eq 0 ]; then
+		if [ "${#_p}" -eq 0 ]; then
 			log_debug "verify_dns_name: name part 0 characters"
 			return 1
 		fi
 	done
 	# make sure dns length is < 254 characters
-	if [ ${#_dns} -ge 254 ]; then
+	if [ "${#_dns}" -ge 254 ]; then
 		log_debug "verify_dns_name: SAN >253 characters"
 		return 1
 	fi
 	# make sure it doesn't start or end with hyphen
-	_t=`echo "${_dns}" | ${SED} -n -E '/^[0-9a-z]([a-z0-9\.-]*[0-9a-z])?$/p'`
+	_t=$(echo "${_dns}" | ${SED} -n -E '/^[0-9a-z]([a-z0-9\.-]*[0-9a-z])?$/p')
 	if [ -z "${_t}" ]; then
 		log_debug "verify_dns_name: name starts of ends with hyphen"
 		return 1
 	fi
 	# check IDNA / Punycode
-	_t=`echo "${_dns}" | ${SED} -n -E '/^xn--/p'`
-	if [ ! -z "${_t}" -a "${PERMIT_IDNA}" -eq 0 ]; then
+	_t=$(echo "${_dns}" | ${SED} -n -E '/^xn--/p')
+	if [ -n "${_t}" -a "${PERMIT_IDNA}" -eq 0 ]; then
 		log_debug "verify_dns_name: name contains IDNA characters. disabled by policy"
 		return 1
 	fi
 	# check reserved TLDs
-	_t=`echo "${_dns}" | ${SED} -n -E '/'${RESERVED_TLDS}'$/p'`
-	if [ ! -z "${_t}" -a "${PERMIT_RESERVED_TLDS}" -eq 0 ]; then
+	_t=$(echo "${_dns}" | ${SED} -n -E '/'${RESERVED_TLDS}'$/p')
+	if [ -n "${_t}" -a "${PERMIT_RESERVED_TLDS}" -eq 0 ]; then
 		log_debug "verify_dns_name: name contains reserved TLD. disabled by policy"
 		return 1
 	fi
 	# check for IP format
 	# NOTE: RE is just 'ok' for IP. Plenty of non-IP will get caught, but that's ok
-	_t=`echo "${_dns}" | ${SED} -n -E '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/p'`
-	if [ ! -z "${_t}" ]; then
+	_t=$(echo "${_dns}" | ${SED} -n -E '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/p')
+	if [ -n "${_t}" ]; then
 		log_debug "verify_dns_name: IP formated SAN"
 		return 1
 	fi
@@ -713,26 +714,25 @@ verify_dns_name() {
 }
 
 verify_cert_req() {
-	local _reqfile=$1; shift
-	local _valid_names=$*
-	local _sans _s _n
-	local _typ _dns
-	_sans=`extract_san "${_reqfile}" "req"`
+	local _sans _s _n _typ _dns _reqfile _valid_names
+	_reqfile=$1; shift
+	_valid_names=$*
+	_sans=$(extract_san "${_reqfile}" "req")
 	if [ $? -ne 0 ]; then
 		log_debug "verify_cert_req: error extracting SAN"
 		return 1
 	fi
-	_valid_names=`lc ${_valid_names}`
+	_valid_names=$(lc "${_valid_names}")
 	for _s in $( echo "${_sans}" | ${TR} ',' '\n'); do
-		_typ=`echo ${_s} | ${CUT} -f1 -d: | uc`
-		_dns=`echo ${_s} | ${CUT} -f2 -d: | lc`
+		_typ=$(echo "${_s}" | ${CUT} -f1 -d: | uc)
+		_dns=$(echo "${_s}" | ${CUT} -f2 -d: | lc)
 		# make sure that the SAN is DNS... we do not support other types
 		if [ "${_typ}" != "DNS" ]; then
 			log_debug "verify_cert_req: unsupported SAN type ${_typ}"
 			return 1
 		fi
 		# check name against list of valid names
-		if [ ! -z "${_valid_names}" ]; then
+		if [ -n "${_valid_names}" ]; then
 			local _f=0
 			for _n in $(echo -n "${_valid_names}" | ${TR} ', ' '\n\n'); do
 log_debug "verify_cert_req: checking name against ${_n}"
@@ -758,14 +758,14 @@ log_debug "verify_cert_req: checking name against ${_n}"
 }
 
 jwk_to_pem() {
-	local _jwk=$1
-	local _kty _sig _pem
+	local _kty _sig _pem _jwk
+	_jwk=$1
 	if [ -z "${_jwk}" ]; then
 		log_debug "jwk_to_pem: no jwk"
 		return 1
 	fi
 
-	_kty=`echo "${_jwk}" | ${JQ} -cr '.kty // ""'`
+	_kty=$(echo "${_jwk}" | ${JQ} -cr '.kty // ""')
 	if [ $? -ne 0 -o -z "${_kty}" ]; then
 		log_debug "jwk_to_pem: failed get kty"
 		return 1
@@ -773,22 +773,22 @@ jwk_to_pem() {
 	case "${_kty}" in
 		EC)
 			local _x _y _crv
-			_crv=`echo "${_jwk}" | ${JQ} -cr '.crv // ""'`
+			_crv=$(echo "${_jwk}" | ${JQ} -cr '.crv // ""')
 			if [ $? -ne 0 -o -z "${_crv}" ]; then
 				log_debug "jwk_to_pem: failed get crv"
 				return 1
 			fi
-			_x=`echo "${_jwk}" | ${JQ} -cr '.x // ""'`
+			_x=$(echo "${_jwk}" | ${JQ} -cr '.x // ""')
 			if [ $? -ne 0 -o -z "${_x}" ]; then
 				log_debug "jwk_to_pem: failed get x"
 				return 1
 			fi
-			_y=`echo "${_jwk}" | ${JQ} -cr '.y // ""'`
+			_y=$(echo "${_jwk}" | ${JQ} -cr '.y // ""')
 			if [ $? -ne 0 -o -z "${_y}" ]; then
 				log_debug "jwk_to_pem: failed get y"
 				return 1
 			fi
-			_pem=`_jwk_ec_public_pem "${_crv}" "${_x}" "${_y}"`
+			_pem=$(_jwk_ec_public_pem "${_crv}" "${_x}" "${_y}")
 			if [ $? -ne 0 ]; then
 				log_debug "jwk_to_pem: generate EC PEM"
 				return 1
@@ -796,17 +796,17 @@ jwk_to_pem() {
 			;;
 		RSA)
 			local _n _e
-			_n=`echo "${_jwk}" | ${JQ} -cr '.n // ""'`
+			_n=$(echo "${_jwk}" | ${JQ} -cr '.n // ""')
 			if [ $? -ne 0 -o -z "${_n}" ]; then
 				log_debug "jwk_to_pem: failed get n"
 				return 1
 			fi
-			_e=`echo "${_jwk}" | ${JQ} -cr '.e // ""'`
+			_e=$(echo "${_jwk}" | ${JQ} -cr '.e // ""')
 			if [ $? -ne 0 -o -z "${_e}" ]; then
 				log_debug "jwk_to_pem: failed get e"
 				return 1
 			fi
-			_pem=`_jwk_rsa_public_pem "${_n}" "${_e}"`
+			_pem=$(_jwk_rsa_public_pem "${_n}" "${_e}")
 			if [ $? -ne 0 ]; then
 				log_debug "jwk_to_pem: generate RSA PEM"
 				return 1
@@ -822,14 +822,11 @@ jwk_to_pem() {
 }
 
 verify_signature() {
+	local _sigfile _ret _hash _jwk64 _alg _sig _pemfile
 	local _jwk64=$1
 	local _alg=$2
 	local _sig=$3
 	local _pemfile=$4
-	local _sigfile
-	local _ret
-	local _hash
-
 	if [ -z "${_alg}" -o -z "${_sig}" -o -z "${_pemfile}" ]; then
 		log_debug "verify_signature: missing required fields"
 		return 1
@@ -843,58 +840,55 @@ verify_signature() {
 			return 1
 			;;
 	esac
-	_sigfile=`${MKTEMP} -t "acme-sig.XXXXXXX" 2>&1`
+	_sigfile=$(${MKTEMP} -t "acme-sig.XXXXXXX" 2>&1)
 	if [ $? -ne 0 ]; then
 		log_debug "verify_signature: failed to make temp file ${_sigfile}"
 		return 1
 	fi
 	# save sig to file in DER format
-	sig_to_der "${_sig}" "${_alg}" > ${_sigfile}
+	sig_to_der "${_sig}" "${_alg}" > "${_sigfile}"
 	if [ $? -ne 0 ]; then
 		log_debug "validate_jws: failed to save signature to tmpfile"
-		${RM} -f ${_sigfile}
+		${RM} -f "${_sigfile}"
 		return 1
 	fi
 	# verify the signature
-	_ret=`echo -n "${_jwk64}" | ${OSSL} dgst ${_hash} -verify ${_pemfile} -signature ${_sigfile}`
+	_ret=$(echo -n "${_jwk64}" | ${OSSL} dgst "${_hash}" -verify "${_pemfile}" -signature "${_sigfile}")
 	if [ $? -ne 0 ]; then
 		log "ERROR" "verify_signature: failed verify signature"
 		log_debug "alg: ${_alg}"
 		log_debug "jwk64: ${_jwk64}"
-		log_debug "keyfile: $(${CAT} ${_pemfile})"
-		log_debug "signature: $(${CAT} ${_sigfile} | ${OSSL} enc -a -A)"
+		log_debug "keyfile: $(${CAT} "${_pemfile}")"
+		log_debug "signature: $(${CAT} "${_sigfile}" | ${OSSL} enc -a -A)"
 		log_debug "validate_jws: signature verify failed: ${_ret}"
 		#${CAT} ${_sigfile} | ${OSSL} asn1parse -inform DER -dump >&2
-		${RM} -f ${_sigfile}
+		${RM} -f "${_sigfile}"
 		return 1
 	fi
-	${RM} -f ${_sigfile}
+	${RM} -f "${_sigfile}"
 	return 0
 }
 
 # see section 6.2
 # validate the JSON Web Signature
 validate_jws() {
-	local _jwk64=$(echo -n "${_JWK64}" | ${TR} -d '\n\r\t ')
-	local _pem
-	local _pemfile
-	local _acct
-	local _alg
-	_acct=`jwk_to_acct`
+	local _pem _pemfile _acct _alg _jwk64 _kid
+	_jwk64=$(echo -n "${_JWK64}" | ${TR} -d '\n\r\t ')
+	_acct=$(jwk_to_acct)
 	if [ $? -ne 0 ]; then
 		# jwk not in request... look for kid
-		local _kid=`query_req_field '.protected | .kid // ""'`
+		_kid=$(query_req_field '.protected | .kid // ""')
 		if [ -z "${_kid}" ]; then
 			return 1
 		fi
-		_acct=`extract_id "${_kid}"`
+		_acct=$(extract_id "${_kid}")
 	fi
 	if [ -z "${_acct}" ]; then
 		# account not found
 		return 1
 	fi
 	log "WARN" "validate_jws: looking up account: ${_acct}"
-	_alg=`query_req_field '.protected | .alg'`
+	_alg=$(query_req_field '.protected | .alg')
 	if [ $? -ne 0 ]; then
 		log_debug "validate_jws: failed get alg"
 		return 1
@@ -902,18 +896,18 @@ validate_jws() {
 	_pemfile="${ACME_DIR}/accts/${_acct}.pem"
 	# if PEM file has not been created... create and save it.
 	if [ ! -f "${_pemfile}" ]; then
-		_jwk=`query_req_field '.protected | .jwk // ""'`
+		_jwk=$(query_req_field '.protected | .jwk // ""')
 		if [ $? -ne 0 -o -z "${_jwk}" ]; then
 			log_debug "validate_jws: failed get jwk"
 			return 1
 		fi
-		_pem=`jwk_to_pem ${_jwk}`
+		_pem=$(jwk_to_pem "${_jwk}")
 		if [ $? -ne 0 -o -z "${_pem}" ]; then
 			log_debug "validate_jws: failed gen pem"
 			return 1
 		fi
 		# save pem file for future
-		echo -n "$_pem" > ${_pemfile}
+		echo -n "$_pem" > "${_pemfile}"
 		if [ $? -ne 0 ]; then
 			log_debug "validate_jws: failed to save pem file"
 			return 1
@@ -924,9 +918,9 @@ validate_jws() {
 		# If not we have already verified
 		# the jwk and kid so just pass thru.
 		local n o
-		n=`query_req_field '.protected | .jwk // ""'`
-		if [ ! -z "$n" ]; then
-			o=`query_account_field "${_acct}" '.jwk'`
+		n=$(query_req_field '.protected | .jwk // ""')
+		if [ -n "$n" ]; then
+			o=$(query_account_field "${_acct}" '.jwk')
 			if [ "$n" != "$o" ]; then
 				echo "n: $n" >&2
 				echo "o: $o" >&2
@@ -934,7 +928,7 @@ validate_jws() {
 			fi
 		fi
 	fi
-	_sig=`query_req_field '.signature'`
+	_sig=$(query_req_field '.signature')
 	if [ $? -ne 0 ]; then
 		log "ERROR" "validate_jws: failed get signature"
 		return 1
@@ -966,24 +960,24 @@ process_revoke() {
 #		echo "process_csr: no order provided"
 #		return 1
 #	fi
-	_reason=`query_req_field '.payload | .reason // ""'`
+	_reason=$(query_req_field '.payload | .reason // ""')
 	if [ $? -ne 0 ]; then
 		echo "process_revoke: looking for reason field failed"
 		return 3
 	fi
-	_tmpfile=`${MKTEMP} -t "acme-revoke.XXXXXXXX"` || return 99
+	_tmpfile=$(${MKTEMP} -t "acme-revoke.XXXXXXXX") || return 99
 	# Must add the ---- to begginging and end, and unprotect the CERT and wrap
 	# the lines on 64 character boundary
-	echo "-----BEGIN CERTIFICATE-----" > ${_tmpfile}
-	${CAT} ${_REQ_FILE} | ${JQ} -r '.payload | .certificate' | url_unprotect | ${FOLD} -w 64 >> ${_tmpfile}
+	echo "-----BEGIN CERTIFICATE-----" > "${_tmpfile}"
+	${CAT} ${_REQ_FILE} | ${JQ} -r '.payload | .certificate' | url_unprotect | ${FOLD} -w 64 >> "${_tmpfile}"
 	# make sure we are on a new line
 	echo >> ${_tmpfile}
-	echo "-----END CERTIFICATE-----" >> ${_tmpfile}
-	_ret=$(${CA_HELPER} "revoke" ${_tmpfile} ${_reason})
+	echo "-----END CERTIFICATE-----" >> "${_tmpfile}"
+	_ret=$(${CA_HELPER} "revoke" "${_tmpfile}" "${_reason}")
 	if [ $? -ne 0 ]; then
 		echo "process_revoke: error revoking certificate: ${_ret}"
-#		${CAT} ${_tmpfile} >&2
-		${RM} -f ${_tmpfile}
+#		${CAT} "${_tmpfile}" >&2
+		${RM} -f "${_tmpfile}"
 		case "${_ret}" in
 			*"Already revoke"*)
 				_rc=1
@@ -996,22 +990,22 @@ process_revoke() {
 				;;
 		esac
 	fi
-	${RM} -f ${_tmpfile}
+	${RM} -f "${_tmpfile}"
 	return ${_rc}	
 }
 
 process_csr() {
-	local _o=$1
-	local _ret
+	local _ret _o
+	_o=$1
 	if [ -z "${_o}" ]; then
 		echo "process_csr: no order provided"
 		return 1
 	fi
-	if [ ! -f ${ACME_DIR}/certs/${_o}.req ]; then
+	if [ ! -f "${ACME_DIR}/certs/${_o}.req" ]; then
 		echo "process_csr: csr file not found"
 		return 1
 	fi
-	_ret=$(${CA_HELPER} "sign" ${ACME_DIR}/certs/${_o}.req ${ACME_DIR}/certs/${_o}.pem ${MAX_CERT_DAYS})
+	_ret=$(${CA_HELPER} "sign" "${ACME_DIR}/certs/${_o}.req" "${ACME_DIR}/certs/${_o}.pem" "${MAX_CERT_DAYS}")
 	if [ $? -ne 0 ]; then
 		echo "process_csr: error signing CSR: ${_ret}"
 		return 1
@@ -1021,31 +1015,30 @@ process_csr() {
 
 jwk_to_key() {
 	local _a=$1
-	_a=`echo -n "${_a}" | ${TR} -d " " | ${OSSL} dgst -sha256 | cut -f2 -d' '`
+	_a=$(echo -n "${_a}" | ${TR} -d " " | ${OSSL} dgst -sha256 | cut -f2 -d' ')
 	echo "$_a"
 }
 
 jwk_to_acct() {
 	local _a
-	_a=`query_req_field '.protected | .jwk // ""'`
+	_a=$(query_req_field '.protected | .jwk // ""')
 	if [ -z "${_a}" ]; then
 		return 1
 	fi
-	_a=`jwk_to_key "${_a}"`
+	_a=$(jwk_to_key "${_a}")
 	echo "${_a}"
 	return 0
 }
 
 # output error to STDOUT
 gen_thumbprint() {
-	local _acct=$1
-	local _ret
-	local _jwk
+	local _ret _jwk _acct
+	_acct=$1
 	if [ -z "${_acct}" ]; then
 		echo "account not specified"
 		return 1
 	fi
-	_jwk=`query_account_field "${_acct}" '.jwk // ""'`
+	_jwk=$(query_account_field "${_acct}" '.jwk // ""')
 	if [ $? -ne 0 ]; then
 		echo "error query_account_field"
 		return 1
@@ -1054,17 +1047,17 @@ gen_thumbprint() {
 		echo "failed to retrieve jwk"
 		return 1
 	fi
-	_ret=`echo -n "${_jwk}" | ${TR} -d " " | ${OSSL} dgst -sha256 -binary | ${OSSL} base64 -a | url_protect`
+	_ret=$(echo -n "${_jwk}" | ${TR} -d " " | ${OSSL} dgst -sha256 -binary | ${OSSL} base64 -a | url_protect)
 	echo "${_ret}"
 }
 
 # See section 8.3
 compare_http_token() {
-	local _acct=$1; shift
-	local _token=$1; shift
-	local _cmp=$1; shift
-	local _tmb
-	_tmb=`gen_thumbprint "${_acct}"`
+	local _tmb _acct _token _cmp
+	_acct=$1; shift
+	_token=$1; shift
+	_cmp=$1; shift
+	_tmb=$(gen_thumbprint "${_acct}")
 	if [ $? -ne 0 ]; then
 		log_debug "compare_http_token: gen_thumbprint failed ${_tmb}"
 		return 1
@@ -1079,17 +1072,17 @@ compare_http_token() {
 
 # See section 8.4
 compare_dns_token() {
-	local _acct=$1; shift
-	local _token=$1; shift
-	local _cl=$1; shift
-	local _tmb _cmp
-	_tmb=`gen_thumbprint "${_acct}"`
+	local _tmb _cmp _acct _token _cl
+	_acct=$1; shift
+	_token=$1; shift
+	_cl=$1; shift
+	_tmb=$(gen_thumbprint "${_acct}")
 	if [ $? -ne 0 ]; then
 		log_debug "compare_dns_token: gen_thumbprint failed ${_tmb}"
 		return 1
 	fi
 	log_debug "compare_dns_token: thumbprint ${_tmb}"
-	_cmp=`echo -n "${_token}.${_tmb}" | ${OSSL} dgst -sha256 -binary | ${OSSL} enc -a -A | url_protect`
+	_cmp=$(echo -n "${_token}.${_tmb}" | ${OSSL} dgst -sha256 -binary | ${OSSL} enc -a -A | url_protect)
 	if [ "${_cl}" == "${_cmp}" ]; then
 		log_debug "compare_dns_token: ${_cl} == ${_cmp}"
 		return 0
@@ -1099,106 +1092,98 @@ compare_dns_token() {
 }
 
 process_http01_request() {
-	local _host=$1
-	local _acct=$2
-	local _token=$3
-	local _retry=${4:-1}
-	local _delay=${5:-5}
-	local _timout=${6:-5}
-	local _rc=1
-	local _resp
-	local _tmpfile
+	local _resp _tmpfile _host _acct _token _retry _delay _timout _rc x _val
+	_host=$1
+	_acct=$2
+	_token=$3
+	_retry=${4:-1}
+	_delay=${5:-5}
+	_timout=${6:-5}
+	_rc=1
 	if [ -z "${_host}" -o -z "${_acct}" -o -z "${_token}" ]; then
 		log_debug "process_http01_request: host or account or token empty"
 		return 1
 	fi
-	_tmpfile=`${MKTEMP} -t "acme-challenge-${_host}.XXXXXXXX"` || return 99
-	while [ ${_retry} -gt 0 ]; do
-#		_resp=`${HTTPLOOKUP} -w ${_timout} -U "ACME.cgi challenge test" -o ${_tmpfile} "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1`
-		_resp=`${HTTPLOOKUP} --silent --connect-timeout ${_timout} -A "ACME.cgi challenge test" -o ${_tmpfile} "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1`
+	_tmpfile=$(${MKTEMP} -t "acme-challenge-${_host}.XXXXXXXX") || return 99
+	while [ "${_retry}" -gt 0 ]; do
+#		_resp=$(${HTTPLOOKUP} -w ${_timout} -U "ACME.cgi challenge test" -o ${_tmpfile} "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1)
+		_resp=$(${HTTPLOOKUP} --silent --connect-timeout "${_timout}" -A "ACME.cgi challenge test" -o "${_tmpfile}" "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1)
 		if [ $? -ne 0 ]; then
 			log_debug "process_http01_request: error looking up record. ${_resp}"
-			echo '{\\\"type\\\":\\\"connection",\\\"desc\\\":\\\"'${_resp}'\\\"}'
+			${PRINTF} '{"type": "connection", "desc": "%s" }' "${_resp}"
 			# ok to loop
 		else
-			local _val=`${CAT} ${_tmpfile}`
-			local x
+			_val=$(${CAT} "${_tmpfile}")
 			log_debug "process_http01_request: retreived value: ${_val}"
-			x=`compare_http_token "${_acct}" "${_token}" "${_val}"`
+			x=$(compare_http_token "${_acct}" "${_token}" "${_val}")
 			if [ $? -eq 0 ]; then
 				_rc=0
 				break;
 			fi
 			# retreive succeeded... but token match failed
-			echo '{\\\"type\\\":\\\"incorrectResponse\\\",\\\"desc\\\":\\\"tokens do not match\\\"}'
+			${PRINTF} '{"type": "connection", "desc": "tokens do not match" }'
 			break;
 		fi
 		log_debug "process_http01_request: sleeping for ${_delay} retry ${_retry}"
-		${SLEEP} ${_delay}
-		_retry=$(($_retry-1))
+		${SLEEP} "${_delay}"
+		_retry=$((_retry-1))
 	done
-	${RM} -f ${_tmpfile}
+	${RM} -f "${_tmpfile}"
 	log_debug "process_http01_request: return ${_rc}"
 	return ${_rc}
 }
 
 process_dns01_request() {
-	local _host=$1
-	local _acct=$2
-	local _token=$3
-	local _retry=${4:-1}
-	local _delay=${5:-5}
-	local _timout=${6:-5}
-	local _rc=1
-	local _resp
+	local _resp _host _acct _token _retry _delay _timout _rc
+	_host=$1
+	_acct=$2
+	_token=$3
+	_retry=${4:-1}
+	_delay=${5:-5}
+	_timout=${6:-5}
+	_rc=1
 	if [ -z "${_host}" -o -z "${_token}" ]; then
 		log_debug "process_dns01_request: host or token empty"
-		echo '{\\\"type\\\":\\\"incorrectResponse\\\",\\\"desc\\\":\\\"tokens\\\"}'
+		${PRINTF} '{"type": "incorrectResponse, "desc": "tokens" }'
 		return 1
 	fi
-	while [ ${_retry} -gt 0 ]; do
-		_resp=`${DNSLOOKUP} -t TXT -W ${_timout} "_acme-challenge.${_host}"`
+	while [ "${_retry}" -gt 0 ]; do
+		_resp=$(${DNSLOOKUP} -t TXT -W "${_timout}" "_acme-challenge.${_host}")
 		case "${_resp}" in
 			*"not found"*)
 				;;
 			*"no TXT"*)
 				;;
 			*"descriptive text"*)
-				_resp=`echo -n "${_resp}" | cut -f4 -d' ' | tr -d '"'` 
-				x=`compare_dns_token "${_acct}" "${_token}" "${_resp}"`
+				_resp=$(echo -n "${_resp}" | cut -f4 -d' ' | tr -d '"')
+				x=$(compare_dns_token "${_acct}" "${_token}" "${_resp}")
 				if [ $? -eq 0 ]; then
 					_rc=0
 					break;
 				fi
 				# retreive succeeded... but token match failed
-				echo '{\\\"type\\\":\\\"incorrectResponse\\\",\\\"desc\\\":\\\"tokens do not match\\\"}'
+				${PRINTF} '{"type": "incorrectResponse, "desc": "tokens do not match" }'
 				break;
 				;;
 		esac
 		log_debug "process_dns01_request: sleeping for ${_delay} retry ${_retry}"
-		${SLEEP} ${_delay}
-		_retry=$(($_retry-1))
+		${SLEEP} "${_delay}"
+		_retry=$((_retry-1))
 	done
 	log_debug "process_dns01_request: return ${_rc}"
 	return ${_rc}
 }
 
 process_challenge() {
-	local _chal=$1
-	local _rc=0
-	local _status
-	local _acct
-	local _i
-	local _ret
-	local _rc
-	local challenges
-	local target
+	local _status _acct _i _ret _rc challenges target _chal _rc
+	_chal=$1
+	_rc=0
 	log "INFO" "process_challenge: ${_chal}"
 	if [ ! -f "${ACME_DIR}/challenges/${_chal}" ]; then
 		log "ERROR" "process_challenge: cannot find challenge ${_chal}"
 		exit 1
 	fi
-	_status=`query_challenge_field "${_chal}" '.status // ""'`
+	_status=$(query_challenge_field "${_chal}" '.status // ""')
 	if [ "${_status}" != "pending" ]; then
 		log_debug "process_challenge: status ${_status}"
 		log "INFO" "process_challenge: order ${_chal} status ${_status}"
@@ -1210,15 +1195,15 @@ process_challenge() {
 		log "ERROR" "process_challenge: failed to set state of order ${_chal} to processing"
 		exit 1
 	fi
-	_acct=`echo "${_chal}" | cut -f1 -d"_"`
-	challenges=`query_challenge_field "${_chal}" '.challenges[] | "\(.type):\(.status):\(.token)" // "" '`
+	_acct=$(echo "${_chal}" | cut -f1 -d"_")
+	challenges=$(query_challenge_field "${_chal}" '.challenges[] | "\(.type):\(.status):\(.token)" // "" ')
 	if [ -z "${challenges}" ]; then
 		log "ERROR" "process_challenge: no challenges found for order ${_chal}"
 		exit 1
 	fi
-	_order=`echo -n "${_chal}" | ${CUT} -f1-2 -d_`
-	_i=`echo -n "${_chal}" | ${CUT} -f4 -d_`
-	target=`query_order_field "${_order}" '.identifiers['${_i}'] | .value // ""'`
+	_order=$(echo -n "${_chal}" | ${CUT} -f1-2 -d_)
+	_i=$(echo -n "${_chal}" | ${CUT} -f4 -d_)
+	target=$(query_order_field "${_order}" '.identifiers['${_i}'] | .value // ""')
 	if [ -z "${target}" ]; then
 		log "ERROR" "process_challenge: no target found in indentifer for order ${_order}"
 		exit 1
@@ -1234,9 +1219,9 @@ process_challenge() {
 	_i=0
 	for _x in ${challenges}; do
 		local typ chal_status token
-		typ=`echo "$_x" |cut -f1 -d:`
-		chal_status=`echo "$_x" |cut -f2 -d:`
-		token=`echo "$_x" |cut -f3 -d:`
+		typ=$(echo "$_x" |cut -f1 -d:)
+		chal_status=$(echo "$_x" |cut -f2 -d:)
+		token=$(echo "$_x" |cut -f3 -d:)
 		if [ "${chal_status}" == "valid" ]; then
 			# already validated the challenge...
 			log_debug "process_challenge: challenge already validated. skipping"
@@ -1244,15 +1229,15 @@ process_challenge() {
 		fi
 		case "$typ" in
 			"dns-01")
-				_ret=`process_dns01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}"`
+				_ret=$(process_dns01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}")
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
-					log "INFO" "process_challenge: ${_chal} ${val} success"
+					log "INFO" "process_challenge: ${_chal} success"
 					break;
 				fi
 				;;
 			"http-01")
-				_ret=`process_http01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}"`
+				_ret=$(process_http01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}")
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
 					# success... so break loop
@@ -1266,7 +1251,7 @@ process_challenge() {
 				;;
 		esac
 		# record the status... should only be failed challenges
-		if [ ${_rc} -ne 0 ]; then
+		if [ "${_rc}" -ne 0 ]; then
 			set_challenge_field "${_chal}" '.challenges['${_i}'].status = "invalid"'
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
@@ -1294,10 +1279,10 @@ process_challenge() {
 			break;
 		fi
 		# inc to move onto next challenge
-		_i=$(($_i+1))
+		_i=$((_i+1))
 	done
 	# process successful the response
-	if [ ${_rc} -eq 0 ]; then
+	if [ "${_rc}" -eq 0 ]; then
 		# $i should have the value from the last successful test.
 		set_challenge_field "${_chal}" '.challenges['${_i}'].status = "valid"'
 		if [ $? -ne 0 ]; then
@@ -1309,7 +1294,7 @@ process_challenge() {
 			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
 			exit 1
 		fi
-		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 $(now_epoch))'"'
+		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 "$(now_epoch)")'"'
 		if [ $? -ne 0 ]; then
 			log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
 			exit 1
@@ -1323,30 +1308,31 @@ process_challenge() {
 }
 
 return_error() {
-	local _hc=$1; shift
-	local _ec=$1; shift
-	local _msg=$*
-#	local _t=`err_to_hc $_ec`
+	local _hc _ec _msg
+	_hc=$1; shift
+	_ec=$1; shift
+	_msg=$*
+#	local _t=$(err_to_hc $_ec)
 #	_hc=${_t:-$_hc}
 	log "ERROR" "${_ec}: ${_msg}"
 	set_header 'Content-Type: application/problem+json'
 	_BODY='{"type":"urn:ietf:params:acme:error:'${_ec}'","detail":"'${_msg}'"}'
-	log_debug "return_error: req: $(${CAT} ${_REQ_FILE})"
-	return_result ${_hc} ""
+	log_debug "return_error: req: $(${CAT} "${_REQ_FILE}")"
+	return_result "${_hc}" ""
 	# no return
 }
 
 #DESC: output the return state, header and body(if any)
 #NOTE: no return
 return_result() {
-	local _hc=$1; shift
-	local _msg=$*
-	local _len=0
-	local _h
+	local _h _hc _msg _len
+	_hc=$1; shift
+	_msg=$*
+	_len=0
 	# set the Link header
 	set_header "Link: <${ISSUER_URL}/directory>;rel=\"index\""
 	# return the HTTP status back to CGI interperter
-	echo "Status: ${_hc} $(hc_string ${_hc})"
+	echo "Status: ${_hc} $(hc_string "${_hc}")"
 	# output the headers
 	for _h in "${_HEADERS[@]}"; do
 		echo "${_h}"
@@ -1366,9 +1352,9 @@ return_result() {
 # NOTE: check and create directories used to issue certs
 # RETURN: 0 - success, 1 - failed
 check_dirs() {
-	local _dir=$1
-	local _d
-	local DIRS="$_dir $_dir/nonce $_dir/orders $_dir/certs $_dir/accts"
+	local _d _dir DIRS
+	_dir=$1
+	DIRS="$_dir $_dir/nonce $_dir/orders $_dir/certs $_dir/accts"
 	for _d in $DIRS; do
 		if [ ! -d "$_d" ]; then
 			return 1
@@ -1388,13 +1374,14 @@ check_post_as_get() {
 }
 
 check_url() {
-	local _fun=$1
-	local _rcvd_url=`query_req_field '.protected | .url'`
-	local _exp_url=${ISSUER_URL}/${_fun}
+	local _fun _rcvd_url _exp_url _cmp
+	_fun=$1
+	_rcvd_url=$(query_req_field '.protected | .url')
+	_exp_url="${ISSUER_URL}/${_fun}"
 	# compare the expected url with the received url.  if they match
 	# the compare string will be empty or contain just the trailing
 	# part of the url
-	local _cmp=${_rcvd_url##$_exp_url}
+	_cmp=${_rcvd_url##"$_exp_url"}
 	if [ "$_cmp" == "$_rcvd_url" ]; then
 		# the expected url didn't match at all with the received url
 		log_debug "rcvd: ${_rcvd_url} expd: ${_exp_url} cmp: ${_cmp}"
@@ -1407,22 +1394,23 @@ check_url() {
 #RETURN: if exists remove and return 0, else return 1
 #NOTE: see 6.5 and 6.5.1 and 7.2
 check_nonce() {
-	local _nt=0
-	local _ct=`now_epoch`
-	local _rc=1
-	local nonce=`query_req_field '.protected | .nonce'`
+	local _nt _ct _rc nonce
+	_nt=0
+	_ct=$(now_epoch)
+	_rc=1
+	nonce=$(query_req_field '.protected | .nonce')
 	if [ -z "${nonce}" ]; then
 		return $_rc
 	fi
-	if [ -f ${ACME_DIR}/nonce/${nonce} ]; then
-		_nt=`${CAT} ${ACME_DIR}/nonce/${nonce}`
-		if [ ! -z "${_nt}" ]; then
-			if [ $((${_nt} + ${NONCE_EXPIRE})) -gt ${_ct} ]; then
+	if [ -f "${ACME_DIR}/nonce/${nonce}" ]; then
+		_nt=$(${CAT} "${ACME_DIR}/nonce/${nonce}")
+		if [ -n "${_nt}" ]; then
+			if [ "$((_nt + NONCE_EXPIRE))" -gt "${_ct}" ]; then
 				_rc=0
 			fi
 		fi
 		# remove old nonce
-		${RM} -f ${ACME_DIR}/nonce/${nonce}
+		${RM} -f "${ACME_DIR}/nonce/${nonce}"
 	fi	
 	return $_rc
 }
@@ -1435,13 +1423,13 @@ make_nonce() {
 	# loop MAX of 5 time... if we don't have a nonce by then, something is wrong
 	while [ $_f -ne 0 ]; do
 		_n=$(${OSSL} rand -hex 32)
-		if [ ! -f ${ACME_DIR}/nonce/${_n} ]; then
-			now_epoch > ${ACME_DIR}/nonce/${_n}
+		if [ ! -f "${ACME_DIR}/nonce/${_n}" ]; then
+			now_epoch > "${ACME_DIR}/nonce/${_n}"
 #			${DATE} +"%s" >${ACME_DIR}/nonce/${_n}
 			set_header "Replay-Nonce: ${_n}"
 			return 0
 		fi
-		_f=$(($_f-1))
+		_f=$((_f-1))
 	done
 	log "ERROR" "make_nonce: failed to create nonce"
 	return 1
@@ -1452,16 +1440,16 @@ make_nonce() {
 verify_acct() {
 	local acct
 	local status
-	acct=`query_req_field '.protected | .kid // ""'`
+	acct=$(query_req_field '.protected | .kid // ""')
 	if [ -z "${acct}" ]; then
-		acct=`jwk_to_acct`
+		acct=$(jwk_to_acct)
 		if [ -z "${acct}" ]; then
 			log "ERROR" "verify_acct: no kid or jwk found in request"
 			echo "malformed" "no kid or jwk found in request"
 			return 1
 		fi
 	else
-		acct=`extract_id "${acct}"`
+		acct=$(extract_id "${acct}")
 #		acct=${acct##*/acct/}
 #		echo "${acct}" | grep -qE '^[a-zA-Z0-9_-]+$'
 #		if [ $? -ne 0 ]; then
@@ -1471,13 +1459,13 @@ verify_acct() {
 #		fi
 	fi
 	log_debug "verify_acct: found account ${acct}"
-	if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
+	if [ ! -f "${ACME_DIR}/accts/${acct}" ]; then
 		log "ERROR" "verify_acct: Account ${acct} does not exist."
 		echo "accountDoesNotExist" "cannot find existing account"
 		return 1
 	else
 		# check the account status
-		status=`query_account_field ${acct} '.status // ""'`
+		status=$(query_account_field ${acct} '.status // ""')
 		if [ $? -ne 0 ]; then
 			log "ERROR" "verify_acct: missing account status"
 			echo "serverInternal" "missing account info"
@@ -1530,9 +1518,7 @@ handle_new_nonce() {
 
 #DESC: process account requests (add, update, deactivation)
 handle_account() {
-	local acct
-	local ore
-	local contacts
+	local acct ore contacts new_contact status
 	make_nonce || return_error 500 "badNonce" "failed to create new nonce"
 	# check for account without a trailing slash "/".  if true, this is a new request
 	acct=${REQUEST_URI##*/acct}	
@@ -1540,22 +1526,22 @@ handle_account() {
 		# no account info sent
 		log "INFO" "account: new request"
 		# new account request
-		acct=`jwk_to_acct`
+		acct=$(jwk_to_acct)
 		if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
-			ore=`query_req_field '.payload | .onlyReturnExisting // ""'`
-			if [ ! -z "${ore}" -a "${ore}" == "true" ]; then
+			ore=$(query_req_field '.payload | .onlyReturnExisting // ""')
+			if [ -n "${ore}" -a "${ore}" == "true" ]; then
 				#NOTE: if this is the firest time the client is making the request, the account object
 				#      will not be created... but the PEM file has already been by validat_jws().  So
 				# 	   check and delete it if it's alone.
-				if [ -f ${ACME_DIR}/accts/${acct}.pem -a ! -f ${ACME_DIR}/accts/${acct} ]; then
-					${RM} -f ${ACME_DIR}/accts/${acct}.pem
+				if [ -f "${ACME_DIR}/accts/${acct}.pem" -a ! -f "${ACME_DIR}/accts/${acct}" ]; then
+					${RM} -f "${ACME_DIR}/accts/${acct}.pem"
 				fi
 				log_debug "handle_account: ignore new account creation per client request"
 				log "INFO" "Account lookup for ${acct} requested.  Does not exist."
 				return_error 400 "accountDoesNotExist" "account creation ignored at client request"
 			fi
 			# check contacts
-			contacts=`query_req_field '.payload | .contact[] // ""'`
+			contacts=$(query_req_field '.payload | .contact[] // ""')
 			if [ -z "${contacts}" ]; then
 				log_debug "handle_account: no contacts specified"
 				log "ERROR" "No contacts specified for new account ${acct}"
@@ -1570,14 +1556,14 @@ handle_account() {
 "contact": '$(query_req_field '.payload | .contact')', 
 "jwk": '$(query_req_field '.protected | .jwk')'
 }'
-			echo "$_BODY" > ${ACME_DIR}/accts/${acct}
+			echo "$_BODY" > "${ACME_DIR}/accts/${acct}"
 			if [ $? -ne 0 ]; then
 				log_debug "handle_account: failed to save account"
 				log "ERROR" "failed to save account ${acct}"
 				return_error 500 "serverInternal" "failed to save account"
 				# return
 			fi
-			_BODY=$(${CAT} ${ACME_DIR}/accts/${acct})
+			_BODY=$(${CAT} "${ACME_DIR}/accts/${acct}")
 			set_header "Location: ${ISSUER_URL}/acct/${acct}"
 			log "INFO" "Account ${acct} created"
 			return_result 201 "Created"
@@ -1587,17 +1573,16 @@ handle_account() {
 			log_debug "handle_account: account already exists"
 			log "INFO" "Account ${acct} already exists."
 			set_header "Location: ${ISSUER_URL}/acct/${acct}"
-			_BODY=$(${CAT} ${ACME_DIR}/accts/${acct})
+			_BODY=$(${CAT} "${ACME_DIR}/accts/${acct}")
 			return_result 200 "Ok"
 			# no return
 		fi
 	else
 		# existing account request
-		acct=`verify_acct` || return_error 400 ${acct}
+		acct=$(verify_acct) || return_error 400 "${acct}"
 		log "INFO" "account: update request ${acct}"
 		# check the account status
-		local status
-		status=`query_account_field ${acct} '.status'` || return_error 404 "serverInternal" "missing account info"
+		status=$(query_account_field "${acct}" '.status') || return_error 404 "serverInternal" "missing account info"
 		log_debug "handle_account: account status ${status}"
 		case "${status}" in
 			deactivated)
@@ -1616,8 +1601,8 @@ handle_account() {
 				;;
 		esac
 		# update account info...
-		status=`query_req_field '.payload | .status //""'`
-		if [ ! -z "${status}" ]; then
+		status=$(query_req_field '.payload | .status //""')
+		if [ -n "${status}" ]; then
 			if [ "${status}" != "deactivated" ]; then
 				# only permit client to deactivate account
 				log "ERROR" "account deactivated: update denied"
@@ -1628,14 +1613,14 @@ handle_account() {
 			set_account_field "${acct}" '.status = "'${status}'"' || return_error 404 "serverInternal" "error updating account status"
 			log "INFO" "account status updated to ${status}"
 		else
-			local new_contact=`query_req_field '.payload | .contact // ""'`
+			new_contact=$(query_req_field '.payload | .contact // ""')
 			log_debug "handle_account: set account contact to ${new_contact}"
-			if [ ! -z "${new_contact}" ]; then
+			if [ -n "${new_contact}" ]; then
 				set_account_field "${acct}" '.contact = "'${new_contact}'"' || return_error 404 "serverInternal" "error updating account contact"
 				log "INFO" "account contacts updated"
 			fi
 		fi
-		_BODY=$(${CAT} ${ACME_DIR}/accts/${acct})
+		_BODY=$(${CAT} "${ACME_DIR}/accts/${acct}")
 		set_header "Location: ${ISSUER_URL}/acct/${acct}"
 		log "INFO" "account ${acct} updated."
 		return_result 200 "OK"
@@ -1648,45 +1633,41 @@ handle_account() {
 
 # DESC: return a list of orders for a specified account
 handle_orders() {
-	local acct
-	local status
-	local olist
+	local acct status olist
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
-	acct=`verify_acct` || return_error 400 ${acct}
-	olist=`${LS} -1r ${ACME_DIR}/orders/${acct}_* | ${JQ} -Rs '. | split("\n") | map(select (. != "")) | map("'${ISSUER_URL}'/order" + .) | { orders: .}'`
+	acct=$(verify_acct) || return_error 400 "${acct}"
+	olist=$(${LS} -1r "${ACME_DIR}/orders/${acct}_*" | ${JQ} -Rs '. | split("\n") | map(select (. != "")) | map("'${ISSUER_URL}'/order" + .) | { orders: .}')
 	log_debug "handle_orders: orders ${olist}"
-	_BODY=${olist}
+	_BODY="${olist}"
 	log "INFO" "orders list returned"
 	return_result 200 "OK"
 	# no return
 }
 
 handle_key_change() {
-	log_debug "handle_key_change: return 405"
-	return_result 405 "Method Not Allowed"
-# NOT TESTED
+	local acct oacct _jwk nacct na_pro na_pay na_sig jwk64 _alg okey url nurl _pem _pemfile
+#### NOT TESTED
+	log "INFO" "keychange: request"
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
-	acct=`verify_acct` || return_error 400 ${acct}
+	acct=$(verify_acct) || return_error 400 "${acct}"
 	# The request has now been validated from the old key and the account is good.
 	# on all errors abort
 	# Verify that payload.signature has signed payload.protected & payload.payload
-	log "INFO" "keychange: request"
-	local na_pro na_pay na_sig jwk64
-	na_pro=`query_req_field '.payload | .protected // ""'`
-	na_pay=`query_req_field '.payload | .payload // ""'`
-	na_sig=`query_req_field '.payload | .signature // ""'`
+	na_pro=$(query_req_field '.payload | .protected // ""')
+	na_pay=$(query_req_field '.payload | .payload // ""')
+	na_sig=$(query_req_field '.payload | .signature // ""')
 	jwk64="${na_pro}.${na_pay}"
-	na_pro=`url_unprotect "${na_pro}" | ${OSSL} -a -A -d`
-	na_pay=`url_unprotect "${na_pay}" | ${OSSL} -a -A -d`
+	na_pro=$(url_unprotect "${na_pro}" | ${OSSL} -a -A -d)
+	na_pay=$(url_unprotect "${na_pay}" | ${OSSL} -a -A -d)
 	if [ -z "${na_pro}" -o -z "${na_pay}" -o -z "${na_sig}" ]; then
 		log "ERROR" "keychange: cannot extract new account information"
 		return_error 400 "malformed" "cannot extract new account information"
 		# no return
 	fi
 	#	check the signature
-	local _alg=`echo ${na_pro} | ${JQ} -cr '.alg //'`
+	_alg=$(echo "${na_pro}" | ${JQ} -cr '.alg //')
 	if [ -z "${_alg}" ]; then
 		log "ERROR" "keychange: cannot find alg"
 		return_error 400 "malformed" "cannot extract alg"
@@ -1698,13 +1679,12 @@ handle_key_change() {
 		return 1
 	fi
 	# 	Extract payload.payload.account and make sure it matches the current account
-	local acct oacct
-	oacct=`echo "${na_pay}" | ${JQ} -cr '.account // ""'`
+	oacct=$(echo "${na_pay}" | ${JQ} -cr '.account // ""')
 	if [ -z "${oacct}" ]; then
 		log "ERROR" "keychange: old account missing"
 		return_error 400 "malformed" "missing old account"
 	fi
-	oacct=`extract_id "${oacct}"`
+	oacct=$(extract_id "${oacct}")
 	if [ "${acct}" != "${oacct}" ]; then
 		log_debug "handle_key_change: old account mismatch: ${acct} != ${oacct}"
 		log "ERROR" "keychange: old account does not match"
@@ -1713,13 +1693,12 @@ handle_key_change() {
 	fi
 	# 	Extract the old key from the payload.protected.payload.oldkey and confirm it
 	# 		matches the old key 
-	locak okey
-	okey=`echo "${na_pay}" | ${JQ} -cr '.oldKey // ""'`
+	okey=$(echo "${na_pay}" | ${JQ} -cr '.oldKey // ""')
 	if [ -z "${okey}" ]; then
 		log "ERROR" "keychange: old key missing"
 		return_error 400 "malformed" "missing old key"
 	fi
-	oacct=`jwk_to_key "${okey}"`
+	oacct=$(jwk_to_key "${okey}")
 	if [ "${acct}" != "${oacct}" ]; then
 		log_debug "handle_key_change:  key mismatch: ${acct} != ${oacct}"
 		log "ERROR" "keychange: old key does not match account"
@@ -1727,60 +1706,58 @@ handle_key_change() {
 		# no return
 	fi
 	#	Verify that play.protected.url == the protected.url
-	local url nurl
-	url=`query_req_field '.protected | .url // ""'`
+	url=$(query_req_field '.protected | .url // ""')
 	if [ -z "${url}" ]; then
 		log "ERROR" "keychange: request url missing"
 		return_error 400 "malformed" "request url missing"
 		# no return
 	fi
-	nurl=`echo ${na_pro} | ${JQ} -cr '.url // ""'`
+	nurl=$(echo "${na_pro}" | ${JQ} -cr '.url // ""')
 	if [ -z "${nurl}" ]; then
 		log "ERROR" "keychange: request url missing"
 		return_error 400 "malformed" "request url missing"
 		# no return
 	fi
 	if [ "${url}" != "${nurl}" ]; then
-		log_debug "handle_key_change: old url mismatch: ${url} != ${ourl}"
+		log_debug "handle_key_change: old url mismatch: ${url} != ${nurl}"
 		log "ERROR" "keychange: old url does not match request"
 		return_error 400 "malfomed" "old url does not match request"
 		# no return
 	fi
+#HERE where is nacct set?
 	#	check to see if an account exists with the new key. if so error with 409 (conflict)
-	if [ -f ${ACME_DIR}/accts/${nacct} ]; then
+	if [ -f "${ACME_DIR}/accts/${nacct}" ]; then
 		log_debug "handle_key_change: new account already exists: ${nacct}"
 		log "ERROR" "keychange: new account already exists"
 		return_error 409 "conflict" "new account already exists"
 		# no return
 	fi
-	local _jwk
-	_jwk=`echo "${na_pro}" | ${JQ} -cr '.jwk // ""'`
+	_jwk=$(echo "${na_pro}" | ${JQ} -cr '.jwk // ""')
 	if [ -z "${_jwk}" ]; then
 		log "ERROR" "keychange: new key not found"
 		return_error 400 "malfomed" "new key not found"
 		# no return
 	fi
 	#	read account old in... update jwk in account.
-	_BODY=$(${CAT} ${ACME_DIR}/accts/${acct})
+	_BODY=$(${CAT} "${ACME_DIR}/accts/${acct}")
 	_BODY=$(echo "${_BODY}" | ${JQ} -cr '.jwk = ('${_jwk}' | fromjson )')
 	#	write out to new account.
-	echo "${_BODY}" > ${ACME_DIR}/accts/${nacct}
+	echo "${_BODY}" > "${ACME_DIR}/accts/${nacct}"
 	if [ $? -ne 0 ]; then
 		log "ERROR" "keychange: error writing new account: ${nacct}"
 		return_error 400 "serverInternal" "error writing new account"
 		# no return
 	fi
 	#	write out PEM for new account.
-	local _pem _pemfile
 	_pemfile="${ACME_DIR}/accts/${nacct}.pem"
-	_pem=`jwk_to_pem ${_jwk}`
+	_pem=$(jwk_to_pem "${_jwk}")
 	if [ $? -ne 0 -o -z "${_pem}" ]; then
 		log "ERROR" "keychange: error generating pem from jwk"
 		return_error 400 "serverInternal" "error writing new account"
 		# not reached
 	fi
 	# save pem file for future
-	echo -n "$_pem" > ${_pemfile}
+	echo -n "$_pem" > "${_pemfile}"
 	if [ $? -ne 0 ]; then
 		log "ERROR" "keychange: error saving pem"
 		return_error 400 "serverInternal" "error writing new account"
@@ -1799,18 +1776,16 @@ handle_key_change() {
 }
 
 handle_order() {
-	local acct
-	local status
-	local order
+	local acct status order expire authz now nb max na
+	local notBefore notAfter
+	local raw_identifiers identifiers _pl wildcard _i t
 	local auth_urls=""
-	local expire
-	local authz
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	log "INFO" "order request"
-	acct=`verify_acct` || return_error 400 ${acct}
-	order=`extract_id`
-	local _pl=`query_req_field '.payload // ""'`
+	acct=$(verify_acct) || return_error 400 "${acct}"
+	order=$(extract_id)
+	_pl=$(query_req_field '.payload // ""')
 	# if payload is empty, then client is just looking for current status
 	if [ -z "${_pl}" ]; then
 		if [ ! -f ${ACME_DIR}/orders/${order} ]; then
@@ -1823,41 +1798,41 @@ handle_order() {
 		# no return
 	fi
 	# assume new order
-	local wildcard=`query_req_field '.payload | .wildcard // ""'`
+	wildcard=$(query_req_field '.payload | .wildcard // ""')
 	# check for wildcard request
-	if [ ! -z "${wildcard}" -a "$(lc ${wildcard})" == "true" ]; then
+	if [ -n "${wildcard}" -a "$(lc "${wildcard}")" == "true" ]; then
 		log "ERROR" "order: wildcard requested, not supported"
 		return_error 400 "rejectedIdentifier" "wildcards not supported"
 	fi
-	local now=`now_epoch`
-	local notBefore=`query_req_field '.payload | .noBefore // ""'`
-	if [ ! -z ${notBefore} ]; then
-		local nb=`rfc3339_to_epoch "${notBefore}"`
-		if [ ${nb} -gt ${now} ]; then
+	now=$(now_epoch)
+	notBefore=$(query_req_field '.payload | .noBefore // ""')
+	if [ -n "${notBefore}" ]; then
+		nb=$(rfc3339_to_epoch "${notBefore}")
+		if [ "${nb}" -gt "${now}" ]; then
 			log "ERROR" "order: notBefore invalid"
 			# notBefore is in the future
 			return_error 400 "malformed" "Bad Request"
 		fi
 	fi
-	local max=$((${now}+${MAX_CERT_TIME}))
-	local notAfter=`query_req_field '.payload | .noBefore // ""'`
-	if [ ! -z ${notAfter} ]; then
-		local na=`rfc3339_to_epoch "${notAfter}"`
-		if [ ${na} -gt ${max} ]; then
+	max=$((now + MAX_CERT_TIME))
+	notAfter=$(query_req_field '.payload | .noBefore // ""')
+	if [ -n "${notAfter}" ]; then
+		na=$(rfc3339_to_epoch "${notAfter}")
+		if [ "${na}" -gt "${max}" ]; then
 			log "ERROR" "order: notAfter invalid"
 			# notAfter is longer than MAX_CERT_TIME
 			return_error 400 "malformed" "Bad Request"
 		fi
 	fi
 	# verify we can handle the authz
-	local raw_identifiers=`query_req_field '.payload | .identifiers'`
-	local identifiers=`query_req_field '.payload | .identifiers[] | "\(.type):\(.value)"'`
-	order=`${OSSL} rand -hex 8`
-	local _i=0
+	raw_identifiers=$(query_req_field '.payload | .identifiers')
+	identifiers=$(query_req_field '.payload | .identifiers[] | "\(.type):\(.value)"')
+	order=$(${OSSL} rand -hex 8)
+	_i=0
 	for _id in ${identifiers}; do
-		local t=`echo "${_id}" | ${CUT} -f1 -d: | lc`
-		authz=`${OSSL} rand -hex 8`
-		case $t in
+		t=$(echo "${_id}" | ${CUT} -f1 -d: | lc)
+		authz=$(${OSSL} rand -hex 8)
+		case "$t" in
 			dns)
 				auth_urls="${auth_urls}\"${ISSUER_URL}/authz/${acct}_${order}_${authz}_${_i}\" "
 				;;
@@ -1867,12 +1842,12 @@ handle_order() {
 				# no return
 				;;
 		esac
-		_i=$(($_i+1))
+		_i=$((_i+1))
 	done
-	auth_urls="[ $(echo ${auth_urls} | ${SED} -r -e 's/(.*) ?$/\1/' -e 's/ /,/' ) ]"
-	expire=`epoch_to_rfc3339 $((${now}+${ORDER_EXPIRE}))`
-	notBefore=`epoch_to_rfc3339 ${now}`
-	notAfter=`epoch_to_rfc3339 ${max}`
+	auth_urls="[ $(echo "${auth_urls}" | ${SED} -r -e 's/(.*) ?$/\1/' -e 's/ /,/' ) ]"
+	expire=$(epoch_to_rfc3339 "$((now + ORDER_EXPIRE))")
+	notBefore=$(epoch_to_rfc3339 "${now}")
+	notAfter=$(epoch_to_rfc3339 "${max}")
 	set_header "Location: ${ISSUER_URL}/order/${acct}_${order}"
 	_BODY='{
   "status": "pending",
@@ -1883,7 +1858,7 @@ handle_order() {
   "authorizations" : '${auth_urls}',
   "finalize": "'${ISSUER_URL}'/finalize/'${acct}'_'${order}'"
 }'
-	echo "${_BODY}" > ${ACME_DIR}/orders/${acct}_${order}
+	echo "${_BODY}" > "${ACME_DIR}/orders/${acct}_${order}"
 	if [ $? -ne 0 ]; then
 		_BODY=""
 		log "ERROR" "order: error saving"
@@ -1897,14 +1872,12 @@ handle_order() {
 }
 
 handle_authz() {
-	local acct
-	local status
-	local order authz
+	local acct status order authz identifier expires token _i challenges
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "authz: request"
 	# abusing the acct response
-	acct=`verify_acct` || return_error 400 ${acct}
-	authz=`extract_id`
+	acct=$(verify_acct) || return_error 400 "${acct}"
+	authz=$(extract_id)
 	if [ -z "$authz" ]; then
 		log "ERROR" "authz: no authz specified"
 		return_error 400 "malformed" "no authz in url"
@@ -1912,11 +1885,11 @@ handle_authz() {
 	fi
 	order=$(echo -n "${authz}" | ${CUT} -f1-2 -d"_")
 	log "INFO" "authz: authz ${authz}"
-	if [ -f ${ACME_DIR}/challenges/${authz} ]; then
+	if [ -f "${ACME_DIR}/challenges/${authz}" ]; then
 		log_debug "handle_authz: processing chanllenge ${authz}"
 		# just load the file for return.  The status will be updated by the testing functions
-		_BODY=$(${CAT} ${ACME_DIR}/challenges/${authz})
-		status=`query_challenge_field "$authz" '.status // ""'`
+		_BODY=$(${CAT} "${ACME_DIR}/challenges/${authz}")
+		status=$(query_challenge_field "$authz" '.status // ""')
 		case "${status}" in
 #			"deactivated")
 #				set_order_field "${order}" '.status = "deactivated"'
@@ -1951,22 +1924,21 @@ handle_authz() {
 		esac
 	else
 		log "INFO" "authz: create new challenge"
-		local identifier expires token _i challenges
-		token=`${OSSL} rand -hex 16`
+		token=$(${OSSL} rand -hex 16)
 		_i=$(echo -n "${authz}" | ${CUT} -f4 -d_)
 		if [ -z "${_i}" ]; then
 			return_error 501 "serverInternal" "error cannot find index"
 			# no return
 		fi
-		identifier=`query_order_field "${order}" ".identifiers[${_i}]"` || return_error 500 "serverInternal" "cannt retrieve identifires from order"
-		expires=`query_order_field "${order}" ".expires"` || return_error 500 "serverInternal" "cannot retrieve expire from order"
+		identifier=$(query_order_field "${order}" ".identifiers[${_i}]") || return_error 500 "serverInternal" "cannt retrieve identifires from order"
+		expires=$(query_order_field "${order}" ".expires") || return_error 500 "serverInternal" "cannot retrieve expire from order"
 		challenges='[
 { "type": "http-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
 { "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" }
 ]'
 		_BODY='{ "status": "pending", "expires": "'${expires}'", "identifier": '${identifier}', "challenges": '${challenges}' }'
 		# save challenge document
-		echo "$_BODY" > ${ACME_DIR}/challenges/${authz}
+		echo "$_BODY" > "${ACME_DIR}/challenges/${authz}"
 		if [ $? -ne 0 ]; then
 			log "ERROR" "authz: failed to save challenge"
 			return_error 500 "serverInternal" "error saving challenge object"
@@ -1979,28 +1951,26 @@ handle_authz() {
 }
 
 handle_challenge() {
-	local acct
-	local status
-	local authz
+	local acct status authz
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "challenge: request"
 	# abusing the acct response
-	acct=`verify_acct` || return_error 400 ${acct}
-	authz=`extract_id`
+	acct=$(verify_acct) || return_error 400 "${acct}"
+	authz=$(extract_id)
 	if [ -z "$authz" ]; then
 		log "ERROR" "challenge: no authz specified"
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
 	log "INFO" "challenge: authz ${authz}"
-	if [ -f ${ACME_DIR}/challenges/${authz} ]; then
-		status=`query_challenge_field ${authz} '.status // ""'` || return_error 500 "serverInternal" "cannot find status"
+	if [ -f "${ACME_DIR}/challenges/${authz}" ]; then
+		status=$(query_challenge_field "${authz}" '.status // ""') return_error 500 "serverInternal" "cannot find status"
 		log "INFO" "challenge: status ${status}"
 		# Check challenge status...
 		case "${status}" in
 			"pending")
 				set_header "Retry-After: ${CLIENT_RETRY}"
-				_BODY=`query_challenge_field ${authz} '.challenges // ""'` || return_error 500 "serverInternal" "error parsing challenges"
+				_BODY=$(query_challenge_field "${authz}" '.challenges // ""') || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
 					# no challenges found...
 					log "ERROR" "challenge: no valid challenges found"
@@ -2009,7 +1979,7 @@ handle_challenge() {
 				fi
 				log "INFO" "challenge: calling process"
 				# call ourselves to process the order
-				$0 -x ${authz}
+				$0 -x "${authz}"
 				# actaully return!
 				;;
 			"processing")
@@ -2021,7 +1991,7 @@ handle_challenge() {
 				;;
 			"valid")
 				# done... return first challenge object that has status of 'valid'
-				_BODY=`query_challenge_field ${authz} '.challenges | map(select(.status == "valid")) | .[0] // ""'` || return_error 500 "serverInternal" "error parsing challenges"
+				_BODY=$(query_challenge_field "${authz}" '.challenges | map(select(.status == "valid")) | .[0] // ""') || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
 					log "ERROR" "challenge: no valid challenges found"
 					# no challenges found...
@@ -2033,7 +2003,7 @@ handle_challenge() {
 				# no return
 				;;
 			"invalid")
-				_BODY=`query_challenge_field ${authz} '.challenges | map(select(.status == "invalid")) | .[0] // ""'` || return_error 500 "serverInternal" "error parsing challenges"
+				_BODY=$(query_challenge_field "${authz}" '.challenges | map(select(.status == "invalid")) | .[0] // ""') || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
 					log "ERROR" "challenge: no valid challenges found"
 					# no challenges found...
@@ -2061,24 +2031,20 @@ handle_challenge() {
 }
 
 handle_finalize() {
-	local acct
-	local status
-	local _csr
-	local _ret
-	local order
+	local acct status _csr _ret order _identifiers
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "finalize: process"
 	# abusing the acct response
-	acct=`verify_acct` || return_error 400 ${acct}
-	order=`extract_id`
+	acct=$(verify_acct) || return_error 400 "${acct}"
+	order=$(extract_id)
 	if [ -z "$order" ]; then
 		log "ERROR" "finalize: no order specified"
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
 	log "INFO" "finalize: order ${order}"
-	if [ -f ${ACME_DIR}/orders/${order} ]; then
-		status=`query_order_field ${order} '.status // ""'` || return_error 500 "serverInternal" "cannot find order status"
+	if [ -f "${ACME_DIR}/orders/${order}" ]; then
+		status=$(query_order_field "${order}" '.status // ""') || return_error 500 "serverInternal" "cannot find order status"
 		log_debug "handle_finalize: order status ${status}"
 		case "${status}" in
 			"ready")
@@ -2089,20 +2055,21 @@ handle_finalize() {
 					return_error 501 "serverInternal" "error setting certificate status to processing"
 					# no return
 				fi
-				_csr=`query_req_field '.payload | .csr // ""'` || return_error 500 "serverInternal" "error extracting the CSR"
+				_csr=$(query_req_field '.payload | .csr // ""') || return_error 500 "serverInternal" "error extracting the CSR"
 				if [ -z "${_csr}" ]; then
 					log "ERROR" "finalize: request not found"
 					return_error 499 "malformed" "CSR not found in request"
 					# no return
 				fi
-				echo "-----BEGIN CERTIFICATE REQUEST-----\n$(url_unprotect ${_csr})\n-----END CERTIFICATE REQUEST-----" > ${ACME_DIR}/certs/${order}.req
+				${PRINTF} "-----BEGIN CERTIFICATE REQUEST-----\n%s\n-----END CERTIFICATE REQUEST-----" \
+					"$(url_unprotect "${_csr}" )" > "${ACME_DIR}/certs/${order}.req"
 				if [ $? -ne 0 ]; then
 					log "ERROR" "finalize: error saving rquest"
 					return_error 500 "serverInternal" "error saving csr"
 					# no return
 				fi
 				#NOTE: since the status of the order is valid, we assume all challenges were validated succesfully
-				local _identifiers=`query_order_field "${order}" '.identifiers | map (.value) | @sh // ""' | ${TR} -d "'"`
+				_identifiers=$(query_order_field "${order}" '.identifiers | map (.value) | @sh // ""' | ${TR} -d "'")
 				if [ -z "${_identifiers}" ]; then
 					log "ERROR" "finalize: cannot retreive identifiers from order"
 					return_error 500 "serverInternal" "error retreiving identifiers"
@@ -2119,7 +2086,7 @@ handle_finalize() {
 					fi
 					return_error 400 "badCSR" "${_ret}"
 				fi
-				_ret=`process_csr ${order}`
+				_ret=$(process_csr "${order}")
 				if [ $? -ne 0 ]; then
 					log "ERROR" "finalize: bad request"
 					set_order_field "${order}" '.status = "invalid"'
@@ -2145,13 +2112,13 @@ handle_finalize() {
 					return_error 501 "serverInternal" "error setting certificate status to ready"
 					# no return
 				fi
-				_BODY=$(${CAT} ${ACME_DIR}/orders/${order})
+				_BODY=$(${CAT} "${ACME_DIR}/orders/${order}")
 				# drop thru and return OK
 				;;
 			"valid")
 				# order is valid... just return order
 				log "INFO" "finalize: valid"
-				_BODY=$(${CAT} ${ACME_DIR}/orders/${order})
+				_BODY=$(${CAT} "${ACME_DIR}/orders/${order}")
 				# drop thru and return OK
 				;;
 			"pending")
@@ -2162,7 +2129,7 @@ handle_finalize() {
 			"processing")
 				# order is processing... just return order
 				log "INFO" "finalize: processing"
-				_BODY=$(${CAT} ${ACME_DIR}/orders/${order})
+				_BODY=$(${CAT} "${ACME_DIR}/orders/${order}")
 				# drop thru and return OK
 				;;
 			"invalid")
@@ -2187,34 +2154,32 @@ handle_finalize() {
 }
 
 handle_certificate() {
-	local acct
-	local status
-	local order
+	local acct status order
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "certificate: process"
 	# abusing the acct response
-	acct=`verify_acct` || return_error 400 ${acct}
-	local order=`extract_id`
+	acct=$(verify_acct) || return_error 400 "${acct}"
+	order=$(extract_id)
 	if [ -z "$order" ]; then
 		log "ERROR" "certificate: no order specified"
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
 	log "INFO" "certificate: handling order ${order}"
-	if [ -f ${ACME_DIR}/certs/${order}.pem ]; then
+	if [ -f "${ACME_DIR}/certs/${order}.pem" ]; then
 #NOTE: CAT to _BODY eats the newline and borks the cert. so replicate the
 # return_success() function.
 		set_header "Content-Type: application/pem-certificate-chain"
 		set_header "Link: <${ISSUER_URL}/directory>;rel=\"index\""
 		# return the HTTP status back to CGI interperter
-		echo "Status: 200 $(hc_string ${_hc})"
+		echo "Status: 200 $(hc_string "${_hc}")"
 		# output the headers
 		for _h in "${_HEADERS[@]}"; do
 			echo "${_h}"
 		done
 		echo
 		# output a body if it exists
-		${CAT} ${ACME_DIR}/certs/${order}.pem | ${SED} -n '/^-----/,/^-----/p'
+		${CAT} "${ACME_DIR}/certs/${order}.pem" | ${SED} -n '/^-----/,/^-----/p'
 		clean_content
 		log "INFO" "certificate: success"
 		exit 0
@@ -2229,12 +2194,11 @@ handle_certificate() {
 }
 
 handle_revoke() {
-	local acct
-	local status
+	local acct status _ret
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "revoke process"
-	acct=`verify_acct` || return_error 400 ${acct}
-	_ret=`process_revoke ${acct}`
+	acct=$(verify_acct) || return_error 400 "${acct}"
+	_ret=$(process_revoke "${acct}")
 	case "$?" in
 		1) #alreadyRevoked
 			log "ERROR" "revoke: already revoked"
@@ -2260,12 +2224,12 @@ handle_revoke() {
 }
 
 ### --- MAIN ---
-conf=`find_conf`
+conf=$(find_conf)
 if [ -z "${conf}" ]; then
 	echo "Status: 500 config not found"
 	exit 1
 else
-	. ${conf}
+	. "${conf}"
 fi
 
 # --- CONFIG ---
@@ -2289,7 +2253,7 @@ DEBUG=${DEBUG:-0}
 DEVNUL=${DEVNUL:-"/dev/null"}
 # default max size is 64k...
 MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-65535}
-INVALID_TARGETS="127.0.0.1 localhost 169.254.169.254"
+#INVALID_TARGETS="127.0.0.1 localhost 169.254.169.254"
 # disabled for now... maybe handle in future.
 PERMIT_IDNA=0
 #NOTE: allow for updates from config???
@@ -2304,14 +2268,14 @@ fi
 # If HTTP_HOST is set, build the URL from it as it will
 # handle any name:port.  This allows for loadbalancing
 # and hosting on different port than 443
-if [ ! -z "${HTTP_HOST}" ]; then
+if [ -n "${HTTP_HOST}" ]; then
 	ISSUER_URL="https://${HTTP_HOST}/acme"
 fi
 # calculate MAX_CERT_TIME in seconds
-MAX_CERT_TIME=$((${MAX_CERT_DAYS}*86400))
+MAX_CERT_TIME=$((MAX_CERT_DAYS*86400))
 
 # send all stderr to DEVNUL file
-exec 2>${DEVNUL}
+exec 2>"${DEVNUL}"
 
 # disable globing
 set -o noglob
@@ -2328,7 +2292,7 @@ set_header "Cache-Control: public, max-age=0, no-cache"
 set_header 'Access-Control-Allow-Origin: *'
 
 # check dir structure
-check_dirs ${ACME_DIR}
+check_dirs "${ACME_DIR}"
 if [ $? -ne 0 ]; then
 	log "ERROR" "error validating directories"
 	log_debug "one or more directories missing in ${ACME_DIR}"
