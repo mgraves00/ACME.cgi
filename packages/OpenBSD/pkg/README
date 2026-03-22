@@ -90,3 +90,44 @@ behind webserver) there are several programs that are required.
 # Update newsyslog to rotate log file.  Add the following
 	/var/www/logs/acme.log                 644  7     250  *     Z "pkill -USR1 -u root -U root -x httpd"
 
+# Configure PCA to work in chroot environment
+	export CA_NAME="example.org"
+	pca ${CA_NAME} init
+	pca ${CA_NAME} config set macros -key PUBLICURL -value http://${ISSUER_DOMAIN}/ca
+	pca ${CA_NAME} config set macros -key PATHLEN -value 2
+	pca ${CA_NAME} config set prog -name prog_ca -a -key copy_extensions -value CopyAll
+	pca ${CA_NAME} config set ext -name extension_acme -a -key basicConstraints -value critical,CA:FALSE
+	pca ${CA_NAME} config set ext -name extension_acme -a -key keyUsage -value nonRepudiation,digitalSignature
+	pca ${CA_NAME} config set ext -name extension_acme -a -key subjectKeyIdentifier -value hash
+	pca ${CA_NAME} config set ext -name extension_acme -a -key authorityKeyIdentifier -value keyid
+	pca ${CA_NAME} config set ext -name extension_acme -a -key extendedKeyUsage -value serverAuth,clientAuth
+	pca ${CA_NAME} config set pol -name policy_sign -key commonName -value optional
+	echo "creating Root cert"
+	pca ${CA_NAME} create root -days 4000 -bits 4096 -cn "${CA_NAME} Root CA"
+	echo "creating ACME RA cert"
+	pca ${CA_NAME} create req -name ACME_RA -days 3650 -newkey 4096 -cn "${CA_NAME} ACME RA"
+	pca ${CA_NAME} sign -name ACME_RA -sign
+	echo "setting ACME_RA as signing cert"
+	pca ${CA_NAME} config sign -name ACME_RA
+	# create export the server certificate
+	_a=`pca ${CA_NAME} show cert -name ${ISSUER_DOMAIN}`
+	if [ -z "${_a}" ]; then
+		echo "creating ${ISSUER_DOMAIN} cert"
+		pca ${CA_NAME} create req -name ${ISSUER_DOMAIN} -newkey 2048 -cn "${ISSUER_DOMAIN}" -san "DNS=${ISSER_DOMAIN}"
+		pca ${CA_NAME} sign -name ${ISSUER_DOMAIN} -days 365
+	fi
+	echo "exporting ${ISSUER_DOMAIN} cert"
+	pca ${CA_NAME} create chain
+	pca ${CA_NAME} export pkcs12 -name ${ISSUER_DOMAIN} -file /etc/ssl/${ISSUER_DOMAIN}.p12 -pass ${SERVER_SECRET} -chain -overwrite
+	echo -n "${SERVER_SECRET}" > /etc/ssl/private/server.pass
+	echo -n "${SERVER_SECRET}" > /etc/ssl/private/key.pass
+	openssl pkcs12 -in /etc/ssl/${ISSUER_DOMAIN}.p12 -nocerts -out /etc/ssl/server.key -passin file:/etc/ssl/private/server.pass -passout file:/etc/ssl/private/key.pass
+	openssl pkcs12 -in /etc/ssl/${ISSUER_DOMAIN}.p12 -nokeys -clcerts -out /etc/ssl/server.crt -passin file:/etc/ssl/private/server.pass
+	openssl pkcs12 -in /etc/ssl/${ISSUER_DOMAIN}.p12 -nokeys -cacerts -out /etc/ssl/acme-roots.pem -passin file:/etc/ssl/private/server.pass
+	cat /etc/ssl/server.crt /etc/ssl/acme-roots.pem > /etc/ssl/server.fullchain.pem
+	rm -f /etc/ssl/private/key.pass
+
+# setup ACME_cleaner.sh to run everyday
+	# add the following to /etc/daily.local
+	[[ -x /var/www/cgi-bin/ACME_cleaner.sh ]] && chroot /var/www /cgi-bin/ACME_cleaner.sh > /tmp/acme-cleaner.out
+
