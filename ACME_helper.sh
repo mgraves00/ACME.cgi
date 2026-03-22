@@ -54,10 +54,10 @@ PROG_NAME=${0##*/}
 CA_NAME=${CA_NAME:-""}
 PCA_ROOT=${PCA_ROOT:-"/etc/pca"}
 DEFAULT_DAYS=${DEFAULT_DAYS:-90}
-DEVNUL=${DEVNUL:-"/tmp/acme-stderr.out"}
+DEVNUL=${DEVNUL:-"/dev/null"}
 
 # send all stderr to DEVNUL file
-exec 2>${DEVNUL}
+exec 2>>${DEVNUL}
 
 if [ $# -lt 1 ]; then
 	echo "${PROG_NAME} <command> <options>"
