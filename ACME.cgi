@@ -72,7 +72,7 @@ log_debug() {
 
 log() {
 	local _sev=$1; shift;
-	local _d=`get_epoch`
+	local _d=`now_epoch`
 	local _h=${HTTP_X_FORWARDED_FOR:-${REMOTE_ADDR:-"unknown"}}
     echo "$(epoch_to_rfc3339 "${_d}") [${_sev}] ${_h} $*" >>"$LOG_FILE"
 }
@@ -218,7 +218,7 @@ epoch_to_rfc3339() {
 	echo "${_o}"
 }
 
-get_epoch() {
+now_epoch() {
 	local _e
 	case $(${UNAME}) in
 		Linux)
@@ -1309,7 +1309,7 @@ process_challenge() {
 			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
 			exit 1
 		fi
-		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 $(get_epoch))'"'
+		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 $(now_epoch))'"'
 		if [ $? -ne 0 ]; then
 			log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
 			exit 1
@@ -1408,8 +1408,7 @@ check_url() {
 #NOTE: see 6.5 and 6.5.1 and 7.2
 check_nonce() {
 	local _nt=0
-#XXX move date to a NOW() function
-	local _ct=`${DATE} +"%s"`
+	local _ct=`now_epoch`
 	local _rc=1
 	local nonce=`query_req_field '.protected | .nonce'`
 	if [ -z "${nonce}" ]; then
@@ -1437,8 +1436,8 @@ make_nonce() {
 	while [ $_f -ne 0 ]; do
 		_n=$(${OSSL} rand -hex 32)
 		if [ ! -f ${ACME_DIR}/nonce/${_n} ]; then
-#XXX move date to a NOW() function
-			${DATE} +"%s" >${ACME_DIR}/nonce/${_n}
+			now_epoch > ${ACME_DIR}/nonce/${_n}
+#			${DATE} +"%s" >${ACME_DIR}/nonce/${_n}
 			set_header "Replay-Nonce: ${_n}"
 			return 0
 		fi
@@ -1814,13 +1813,13 @@ handle_order() {
 	local _pl=`query_req_field '.payload // ""'`
 	# if payload is empty, then client is just looking for current status
 	if [ -z "${_pl}" ]; then
-		if [ ${ACME_DIR}/orders/${order} ]; then
+		if [ ! -f ${ACME_DIR}/orders/${order} ]; then
 			log "ERROR" "order: unknown order ${order}"
 			return_error 400 "malformed" "Bad Request"
 			# no return
 		fi
 		_BODY=$(${CAT} ${ACME_DIR}/orders/${order})
-		return_success 200 "OK"
+		return_result 200 "OK"
 		# no return
 	fi
 	# assume new order
@@ -1830,7 +1829,7 @@ handle_order() {
 		log "ERROR" "order: wildcard requested, not supported"
 		return_error 400 "rejectedIdentifier" "wildcards not supported"
 	fi
-	local now=`get_epoch`
+	local now=`now_epoch`
 	local notBefore=`query_req_field '.payload | .noBefore // ""'`
 	if [ ! -z ${notBefore} ]; then
 		local nb=`rfc3339_to_epoch "${notBefore}"`
@@ -1919,16 +1918,17 @@ handle_authz() {
 		_BODY=$(${CAT} ${ACME_DIR}/challenges/${authz})
 		status=`query_challenge_field "$authz" '.status // ""'`
 		case "${status}" in
-			"deactivated")
-				set_order_field "${order}" '.status = "deactivated"'
-				if [ $? -ne 0 ]; then
-					log "ERROR" "authz: could not set order state to deactivated for order ${order}"
-					return_error 501 "serverInternal" "error seting order state to deactivated"
-					# no return
-				fi
-				;;
+#			"deactivated")
+#				set_order_field "${order}" '.status = "deactivated"'
+#				if [ $? -ne 0 ]; then
+#					log "ERROR" "authz: could not set order state to deactivated for order ${order}"
+#					return_error 501 "serverInternal" "error seting order state to deactivated"
+#					# no return
+#				fi
+#				;;
 			"valid")
-				set_order_field "${order}" '.status = "valid"'
+				# challenge is valid... or set order so to ready so cert can be generated
+				set_order_field "${order}" '.status = "ready"'
 				if [ $? -ne 0 ]; then
 					log "ERROR" "authz: could not set order state to valid for order ${order}"
 					return_error 501 "serverInternal" "error seting order state to valid"
@@ -1937,9 +1937,16 @@ handle_authz() {
 				;;
 			"invalid")
 				set_order_field "${order}" '.status = "invalid"'
+				if [ $? -ne 0 ]; then
 					log "ERROR" "authz: could not set order state to invalid for order ${order}"
 					return_error 501 "serverInternal" "error seting order state to invalid"
 					# no return
+				fi
+				;;
+			*)
+				log "ERROR" "authz: unknow challenge state ${status} for order${order}"
+				return_error 501 "serverInternal" "error seting order state to invalid"
+				# no return
 				;;
 		esac
 	else
@@ -1948,8 +1955,8 @@ handle_authz() {
 		token=`${OSSL} rand -hex 16`
 		_i=$(echo -n "${authz}" | ${CUT} -f4 -d_)
 		if [ -z "${_i}" ]; then
-			# error with index
-			#XXX return error
+			return_error 501 "serverInternal" "error cannot find index"
+			# no return
 		fi
 		identifier=`query_order_field "${order}" ".identifiers[${_i}]"` || return_error 500 "serverInternal" "cannt retrieve identifires from order"
 		expires=`query_order_field "${order}" ".expires"` || return_error 500 "serverInternal" "cannot retrieve expire from order"
@@ -2074,7 +2081,14 @@ handle_finalize() {
 		status=`query_order_field ${order} '.status // ""'` || return_error 500 "serverInternal" "cannot find order status"
 		log_debug "handle_finalize: order status ${status}"
 		case "${status}" in
-			"valid")
+			"ready")
+				log "INFO" "finalize: ready"
+				set_order_field "${order}" '.status = "processing"'
+				if [ $? -ne 0 ]; then
+					log "ERROR" "could not set certificate statue to processing on order ${order}"
+					return_error 501 "serverInternal" "error setting certificate status to processing"
+					# no return
+				fi
 				_csr=`query_req_field '.payload | .csr // ""'` || return_error 500 "serverInternal" "error extracting the CSR"
 				if [ -z "${_csr}" ]; then
 					log "ERROR" "finalize: request not found"
@@ -2096,12 +2110,24 @@ handle_finalize() {
 				# verify that the requested identifiers are in the cert... no more / no less
 				verify_cert_req "${ACME_DIR}/certs/${order}.req" "${_identifiers}"
 				if [ $? -ne 0 ]; then
-					echo "process_csr: bad csr request"
-					return 1
+					log "ERROR" "finalize: bad request"
+					set_order_field "${order}" '.status = "invalid"'
+					if [ $? -ne 0 ]; then
+						log "ERROR" "could not set certificate statue to ready on order ${order}"
+						return_error 501 "serverInternal" "error setting certificate status to ready"
+						# no return
+					fi
+					return_error 400 "badCSR" "${_ret}"
 				fi
 				_ret=`process_csr ${order}`
 				if [ $? -ne 0 ]; then
 					log "ERROR" "finalize: bad request"
+					set_order_field "${order}" '.status = "invalid"'
+					if [ $? -ne 0 ]; then
+						log "ERROR" "could not set certificate statue to ready on order ${order}"
+						return_error 501 "serverInternal" "error setting certificate status to ready"
+						# no return
+					fi
 					return_error 400 "badCSR" "${_ret}"
 					# no return
 				fi
@@ -2112,13 +2138,21 @@ handle_finalize() {
 					return_error 501 "serverInternal" "error seting certificate for order"
 					# no return
 				fi
+				# set the order to valid
+				set_order_field "${order}" '.status = "valid"'
+				if [ $? -ne 0 ]; then
+					log "ERROR" "could not set certificate statue to ready on order ${order}"
+					return_error 501 "serverInternal" "error setting certificate status to ready"
+					# no return
+				fi
 				_BODY=$(${CAT} ${ACME_DIR}/orders/${order})
 				# drop thru and return OK
 				;;
-			"ready")
-				log "ERROR" "finalize: ready"
-				return_error 499 "orderNotReady" "order not ready to be finalized"
-				# no return
+			"valid")
+				# order is valid... just return order
+				log "INFO" "finalize: valid"
+				_BODY=$(${CAT} ${ACME_DIR}/orders/${order})
+				# drop thru and return OK
 				;;
 			"pending")
 				log "ERROR" "finalize: pending"
@@ -2126,13 +2160,14 @@ handle_finalize() {
 				# no return
 				;;
 			"processing")
-				log "ERROR" "finalize: processing"
-				return_error 499 "orderNotReady" "order not ready to be finalized"
-				# no return
+				# order is processing... just return order
+				log "INFO" "finalize: processing"
+				_BODY=$(${CAT} ${ACME_DIR}/orders/${order})
+				# drop thru and return OK
 				;;
 			"invalid")
 				log "ERROR" "finalize: invalid"
-				return_error 499 "orderNotReady" "order not ready to be finalized"
+				return_error 499 "orderNotReady" "order error processing"
 				# no return
 				;;
 			*)
