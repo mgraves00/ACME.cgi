@@ -45,7 +45,7 @@ find_conf() {
 
 now_epoch() {
 	local _e
-	case `${UNAME}` in
+	case $(${UNAME}) in
 		Linux)
 			_e=$(${DATE} +"%s")
 			;;
@@ -61,12 +61,12 @@ rfc3339_to_epoch() {
 	if [ -z "$1" ]; then
 		echo "0"
 	fi
-	case `${UNAME}` in
+	case $(${UNAME}) in
 		Linux)
-			_e=`${DATE} +"%s" -d "$1"`
+			_e=$(${DATE} +"%s" -d "$1")
 			;;
 		*)
-			_e=`${DATE} -j -f "%Y-%m-%dT%H:%M:%S%z" +"%s" "$1"`
+			_e=$(${DATE} -j -f "%Y-%m-%dT%H:%M:%S%z" +"%s" "$1")
 			;;
 	esac
 	if [ -z "${_e}" ]; then
@@ -75,9 +75,9 @@ rfc3339_to_epoch() {
 	echo "${_e}"
 }
 
-NOW=`now_epoch`
+NOW=$(now_epoch)
 
-conf=`find_conf`
+conf=$(find_conf)
 if [ -z "$conf" ]; then
 	echo "cannot find conf file"
 	exit 1
@@ -92,36 +92,36 @@ if [ -z "${ACME_DIR}" -o ! -d "${ACME_DIR}" ]; then
 fi
 
 # cleanup old nonces
-for _n in `${LS} ${ACME_DIR}/nonce`; do
-	_nt=`${CAT} ${ACME_DIR}/nonce/${_n}`
-	if [ ${_nt} -lt ${NOW} ]; then
-		${RM} -f ${ACME_DIR}/nonce/${_n}
+for _n in $(${LS} "${ACME_DIR}/nonce"); do
+	_nt=$(${CAT} "${ACME_DIR}/nonce/${_n}")
+	if [ "${_nt}" -lt "${NOW}" ]; then
+		${RM} -f "${ACME_DIR}/nonce/${_n}"
 	fi
 done
 
 # clean up old orders
 echo "cleaning up orders..."
-for _o in `${LS} ${ACME_DIR}/orders`; do
+for _o in $(${LS} "${ACME_DIR}/orders"); do
 	if [ ! -s "${_o}" ]; then
 		# we know the file exists becuse it was in the 'ls'
 		# if file is zero size, just delete
 		${RM} -f "${_o}"
 		continue
 	fi
-	_s=`${CAT} ${ACME_DIR}/orders/${_o} | ${JQ} -cr '.status'`
-	case ${_s} in
+	_s=$(${CAT} "${ACME_DIR}/orders/${_o}" | ${JQ} -cr '.status')
+	case "${_s}" in
 		invalid)
 			# invalid... delete it
 			echo "removing invalid order ${ACME_DIR}/orders/${_o}"
-			${RM} -f ${ACME_DIR}/orders/${_o}
+			${RM} -f "${ACME_DIR}/orders/${_o}"
 			;;
 		*)
 			# delete expired orders
-			_e=`${CAT} ${ACME_DIR}/orders/${_o} | ${JQ} -cr '.expires'`
-			_et=`rfc3339_to_epoch "${_e}"`
-			if [ ${NOW} -gt ${_et} ]; then
+			_e=$(${CAT} "${ACME_DIR}/orders/${_o}" | ${JQ} -cr '.expires')
+			_et=$(rfc3339_to_epoch "${_e}")
+			if [ "${NOW}" -gt "${_et}" ]; then
 				echo "removing expired order ${ACME_DIR}/orders/${_o}"
-				${RM} -f ${ACME_DIR}/orders/${_o}
+				${RM} -f "${ACME_DIR}/orders/${_o}"
 			fi
 			;;
 	esac
@@ -129,27 +129,27 @@ done
 
 # clean up old challenges
 echo "cleaning up challenges..."
-for _o in `${LS} ${ACME_DIR}/challenges`; do
+for _o in $(${LS} "${ACME_DIR}/challenges"); do
 	if [ ! -s "${_o}" ]; then
 		# we know the file exists becuse it was in the 'ls'
 		# if file is zero size, just delete
 		${RM} -f "${_o}"
 		continue
 	fi
-	_s=`${CAT} ${ACME_DIR}/challenges/${_o} | ${JQ} -cr '.status'`
-	case ${_s} in
+	_s=$(${CAT} "${ACME_DIR}/challenges/${_o}" | ${JQ} -cr '.status')
+	case "${_s}" in
 		invalid)
 			# invalid... delete it
 			echo "removing invalid challenge ${ACME_DIR}/challenges/${_o}"
-			${RM} -f ${ACME_DIR}/challenges/${_o}
+			${RM} -f "${ACME_DIR}/challenges/${_o}"
 			;;
 		*)
 			# delete expired orders
-			_e=`${CAT} ${ACME_DIR}/challenges/${_o} | ${JQ} -cr '.expires'`
-			_et=`rfc3339_to_epoch "${_e}"`
-			if [ ${NOW} -gt ${_et} ]; then
+			_e=$(${CAT} "${ACME_DIR}/challenges/${_o}" | ${JQ} -cr '.expires')
+			_et=$(rfc3339_to_epoch "${_e}")
+			if [ "${NOW}" -gt "${_et}" ]; then
 				echo "removing expired challenge ${ACME_DIR}/challenges/${_o}"
-				${RM} -f ${ACME_DIR}/challenges/${_o}
+				${RM} -f "${ACME_DIR}/challenges/${_o}"
 			fi
 			;;
 	esac
@@ -157,7 +157,7 @@ done
 
 # look for deactivated accounts
 echo "cleaning up accounts..."
-for _o in `${LS} ${ACME_DIR}/accts`; do
+for _o in $(${LS} "${ACME_DIR}/accts"); do
 	if [ ! -s "${_o}" ]; then
 		# we know the file exists becuse it was in the 'ls'
 		# if file is zero size, just delete
@@ -165,21 +165,21 @@ for _o in `${LS} ${ACME_DIR}/accts`; do
 		continue
 	fi
 	
-	if [ ${_o%%.pem} != ${_o} ]; then
+	if [ "${_o%%.pem}" != "${_o}" ]; then
 		# skip PEM files
 		continue
 	fi
-	status=$(cat ${ACME_DIR}/accts/${_o} | ${JQ} -cr '.status')
-	case ${status} in
+	status=$(cat "${ACME_DIR}/accts/${_o}" | ${JQ} -cr '.status')
+	case "${status}" in
 		deactivated)
 			# delete all requests and certs
 			echo "removing certs for deactivated account ${ACME_DIR}/certs/${_o}"
-			${RM} -f ${ACME_DIR}/certs/${_o}_*.pem
-			${RM} -f ${ACME_DIR}/certs/${_o}_*.req
+			${RM} -f "${ACME_DIR}/certs/${_o}_*.pem"
+			${RM} -f "${ACME_DIR}/certs/${_o}_*.req"
 			# delete the account
 			echo "removing deactivated account ${ACME_DIR}/account/${_o}"
-			${RM} -f ${ACME_DIR}/accts/${_o}.pem
-			${RM} -f ${ACME_DIR}/accts/${_o}
+			${RM} -f "${ACME_DIR}/accts/${_o}.pem"
+			${RM} -f "${ACME_DIR}/accts/${_o}"
 			;;
 	esac
 done
