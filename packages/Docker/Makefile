@@ -1,6 +1,6 @@
 #
 NAME = acmecgi
-VER = 0.1
+VER = 0.2
 
 FILES = ACME.cgi ACME_helper.sh ACME_cleaner.sh
 PARENT_DIR = ../..
