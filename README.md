@@ -35,6 +35,8 @@ and certificate revocation.
 | VERIFY_RETRIES | No | 3 | Number of times a verify attempt should try before concluding the verify has failed |
 | VERIFY_DELAY | No | 3 | Number of seconds a verify attempt will delay between attempts |
 | CA_HELPER | No | /cgi-bin/ACME_helper.sh | Script that ACME.cgi will call for signing and revoking certs |
+| MAX_REQUEST_SIZE | No | 65535 | Maximum request size in bytes |
+| PERMIT_RESERVED_TLDS | No | 0 | Permit issuance of cert for RESERVED_TLDS.  Current list is: local, internal, localhost, test, example, invalid, onion, corp, home, lan, intranet |
 
 ## Config/Environment Variables ACME_helper.conf
 | Variable | Required | Default | Description |
