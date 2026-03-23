@@ -3,6 +3,7 @@
 services:
   acmecgi:
     image: acmecgi:0.2.1
+	build: .
     ports:
       - "10443:8443/tcp"
     env_file:
