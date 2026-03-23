@@ -848,7 +848,7 @@ verify_signature() {
 	# save sig to file in DER format
 	sig_to_der "${_sig}" "${_alg}" > "${_sigfile}"
 	if [ $? -ne 0 ]; then
-		log_debug "validate_jws: failed to save signature to tmpfile"
+		log_debug "verify_signature: failed to save signature to tmpfile"
 		${RM} -f "${_sigfile}"
 		return 1
 	fi
@@ -879,18 +879,20 @@ validate_jws() {
 		# jwk not in request... look for kid
 		_kid=$(query_req_field '.protected | .kid // ""')
 		if [ -z "${_kid}" ]; then
+			log "ERROR" "validate_jws: cannot find kid or jwk"
 			return 1
 		fi
 		_acct=$(extract_id "${_kid}")
 	fi
 	if [ -z "${_acct}" ]; then
 		# account not found
+		log "ERROR" "validate_jws: cannot find account"
 		return 1
 	fi
-	log "WARN" "validate_jws: looking up account: ${_acct}"
+	log "INFO" "validate_jws: looking up account: ${_acct}"
 	_alg=$(query_req_field '.protected | .alg')
 	if [ $? -ne 0 ]; then
-		log_debug "validate_jws: failed get alg"
+		log "ERROR" "validate_jws: failed to get alg"
 		return 1
 	fi
 	_pemfile="${ACME_DIR}/accts/${_acct}.pem"
@@ -898,18 +900,18 @@ validate_jws() {
 	if [ ! -f "${_pemfile}" ]; then
 		_jwk=$(query_req_field '.protected | .jwk // ""')
 		if [ $? -ne 0 -o -z "${_jwk}" ]; then
-			log_debug "validate_jws: failed get jwk"
+			log "ERROR" "validate_jws: failed to get jwk"
 			return 1
 		fi
 		_pem=$(jwk_to_pem "${_jwk}")
 		if [ $? -ne 0 -o -z "${_pem}" ]; then
-			log_debug "validate_jws: failed gen pem"
+			log "ERROR" "validate_jws: failed to generate pem"
 			return 1
 		fi
 		# save pem file for future
 		echo -n "$_pem" > "${_pemfile}"
 		if [ $? -ne 0 ]; then
-			log_debug "validate_jws: failed to save pem file"
+			log "ERROR" "validate_jws: failed to save pem file"
 			return 1
 		fi
 	else
