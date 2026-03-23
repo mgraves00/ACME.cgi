@@ -9,9 +9,9 @@ if [ $? -ne 0 ]; then
 fi
 echo "found version $v"
 
-ISSUER_DOMAIN=${SERVER_NAME:-""}
-ISSUER_EMAIL=${CONTACT_EMAIL:-""}
-ISSUER_URL=${SERVER_URL:-""}
+ISSUER_DOMAIN=${SERVER_NAME:-}
+ISSUER_EMAIL=${CONTACT_EMAIL:-}
+ISSUER_URL=${SERVER_URL:-}
 ACME_LOG=${ACME_LOG:-/app/logs/acme.log}
 ACME_DIR=${ACME_DIR:-/app/data/acme}
 NONCE_EXPIRE=${NONCE_EXPIRE:-60}
@@ -25,17 +25,18 @@ CA_HELPER=${CA_HELPER:-/app/cgi-bin/ACME_helper.sh}
 CA_NAME=${CA_NAME:-example}
 PCA_ROOT=${PCA_ROOT:-/app/data/pca}
 SERVER_SECRET=${SERVER_SECRET:-changeme}
-if [ -z ${CA_NAME} ]; then
+export PCA_ROOT
+if [ -z "${CA_NAME}" ]; then
 	echo "CA_NAME not specified"
 	exit 1
 fi
-if [ -z ${ISSUER_DOMAIN} -o -z ${ISSUER_EMAIL} ]; then
+if [ -z "${ISSUER_DOMAIN}" -o -z "${ISSUER_EMAIL}" ]; then
 	echo "missing ISSUER_DOMAIN or ISSUER_EMAIL or ISSUER_URL"
 	exit 1
 fi
 if [ ! -d "${PCA_ROOT}/${CA_NAME}" ]; then
 	echo "initializeing PCA"
-	mkdir ${PCA_ROOT}
+	mkdir "${PCA_ROOT}"
 	pca ${CA_NAME} init
 	pca ${CA_NAME} config set macros -key PUBLICURL -value http://${ISSUER_DOMAIN}/ca
 	pca ${CA_NAME} config set macros -key PATHLEN -value 2
@@ -66,13 +67,13 @@ if [ ! -f "config/certs/server.crt" ]; then
 	echo "exporting ${ISSUER_DOMAIN} cert"
 	pca ${CA_NAME} create chain
 	pca ${CA_NAME} export pkcs12 -name ${ISSUER_DOMAIN} -file config/certs/${ISSUER_DOMAIN}.p12 -pass ${SERVER_SECRET} -chain -overwrite
-	echo -n "${SERVER_SECRET}" > /app/server.pass
-	echo -n "${SERVER_SECRET}" > /app/key.pass
-	openssl pkcs12 -in config/certs/${ISSUER_DOMAIN}.p12 -nocerts -out config/certs/server.key -passin file:/app/server.pass -passout file:/app/key.pass
-	openssl pkcs12 -in config/certs/${ISSUER_DOMAIN}.p12 -nokeys -clcerts -out config/certs/server.crt -passin file:/app/server.pass
-	openssl pkcs12 -in config/certs/${ISSUER_DOMAIN}.p12 -nokeys -cacerts -out config/certs/acme-roots.pem -passin file:/app/server.pass
+	echo -n "${SERVER_SECRET}" > /app/config/certs/server.pass
+	echo -n "${SERVER_SECRET}" > /app/config/certs/key.pass
+	openssl pkcs12 -in config/certs/${ISSUER_DOMAIN}.p12 -nocerts -out config/certs/server.key -passin file:/app/config/certs/server.pass -passout file:/app/config/certs/key.pass
+	openssl pkcs12 -in config/certs/${ISSUER_DOMAIN}.p12 -nokeys -clcerts -out config/certs/server.crt -passin file:/app/config/certs/server.pass
+	openssl pkcs12 -in config/certs/${ISSUER_DOMAIN}.p12 -nokeys -cacerts -out config/certs/acme-roots.pem -passin file:/app/config/certs/server.pass
 	cat config/certs/server.crt config/certs/acme-roots.pem > config/certs/server.fullchain.pem
-	rm -f /app/key.pass
+	rm -f /app/config/certs/key.pass
 fi
 
 if [ ! -d "${ACME_DIR}" ]; then
