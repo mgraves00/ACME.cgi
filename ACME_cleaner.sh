@@ -34,7 +34,7 @@ CAT=$(which cat)
 
 find_conf() {
     local _f
-    for _f in "/etc/ACME.conf" "/app/config/ACME.conf"; do
+    for _f in "/etc/ACME.conf" "/usr/local/etc/ACME.conf" "/app/config/ACME.conf"; do
         if [ -f "${_f}" ]; then
             echo ${_f}
             return
