@@ -82,6 +82,7 @@ if [ -z "$conf" ]; then
 	echo "cannot find conf file"
 	exit 1
 fi
+. ${conf}
 
 ACME_DIR=${ACME_DIR:-"/acme"}
 
