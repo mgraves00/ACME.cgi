@@ -26,11 +26,11 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-LS=$(which ls)
-JQ=$(which jq)
-RM=$(which rm)
-DATE=$(which date)
-CAT=$(which cat)
+LS=$(command -v ls)
+JQ=$(command -v jq)
+RM=$(command -v rm)
+DATE=$(command -v date)
+CAT=$(command -v cat)
 
 find_conf() {
     local _f
