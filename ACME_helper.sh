@@ -26,9 +26,9 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-PCA=$(which pca)
-OSSL=$(which openssl)
-CUT=$(which cut)
+PCA=$(command -v pca)
+OSSL=$(command -v openssl)
+CUT=$(command -v cut)
 
 find_conf() {
 	local _f
