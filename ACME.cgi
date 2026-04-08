@@ -2081,8 +2081,11 @@ handle_finalize() {
 					return_error 499 "malformed" "CSR not found in request"
 					# no return
 				fi
-				${PRINTF} "-----BEGIN CERTIFICATE REQUEST-----\n%s\n-----END CERTIFICATE REQUEST-----" \
-					"$(url_unprotect "${_csr}" )" > "${ACME_DIR}/certs/${order}.req"
+				${CAT} <<EOF>"${ACME_DIR}/certs/${order}.req"
+-----BEGIN CERTIFICATE REQUEST-----
+$(url_unprotect "${_csr}" )
+-----END CERTIFICATE REQUEST-----"
+EOF
 				if [ $? -ne 0 ]; then
 					log "ERROR" "finalize: error saving rquest"
 					return_error 500 "serverInternal" "error saving csr"
