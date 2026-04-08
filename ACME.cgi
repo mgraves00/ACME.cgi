@@ -35,6 +35,7 @@ WC=$(command -v wc)
 CAT=$(command -v cat)
 CUT=$(command -v cut)
 SED=$(command -v sed)
+XXD=$(command -v xxd)
 DATE=$(command -v date)
 FOLD=$(command -v fold)
 OSSL=$(command -v openssl)
@@ -302,9 +303,10 @@ _hex_to_bin() {
 	if [ ${#_s} -eq 0 ]; then
 		_s=$(${CAT})
 	fi
-	for _h in $(echo -n "${_s}" | ${SED} 's/\([0-9a-fA-F]\{2\}\)/ \1/g'); do
-		${PRINTF} "\x${_h}"
-	done
+	echo -n "${_s}" | ${XXD} -r -p
+#	for _h in $(echo -n "${_s}" | ${SED} 's/\([0-9a-fA-F]\{2\}\)/ \1/g'); do
+#		${PRINTF} "\x${_h}"
+#	done
 }
 _b64url_to_hex() {
 	${PRINTF} "%s" "$1" | url_unprotect | ${OSSL} enc -a -A -d | _bin_to_hex
