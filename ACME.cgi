@@ -862,7 +862,7 @@ verify_signature() {
 		log_debug "jwk64: ${_jwk64}"
 		log_debug "keyfile: $(${CAT} "${_pemfile}")"
 		log_debug "signature: $(${CAT} "${_sigfile}" | ${OSSL} enc -a -A)"
-		log_debug "validate_jws: signature verify failed: ${_ret}"
+		log_debug "verify_signature: signature verify failed: ${_ret}"
 		#${CAT} ${_sigfile} | ${OSSL} asn1parse -inform DER -dump >&2
 		${RM} -f "${_sigfile}"
 		return 1
