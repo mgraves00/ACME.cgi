@@ -27,24 +27,24 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # --- EXTERNAL PROGS ---
-JQ=$(command -v jq)
-OD=$(command -v od)
-RM=$(command -v rm)
-TR=$(command -v tr)
-WC=$(command -v wc)
-CAT=$(command -v cat)
-CUT=$(command -v cut)
-SED=$(command -v sed)
-XXD=$(command -v xxd)
-DATE=$(command -v date)
-FOLD=$(command -v fold)
-OSSL=$(command -v openssl)
-SLEEP=$(command -v sleep)
-UNAME=$(command -v uname)
-PRINTF=$(command -v printf)
-MKTEMP=$(command -v mktemp)
-DNSLOOKUP=$(command -v host)
-HTTPLOOKUP=$(command -v curl)
+JQ=$(command -v jq) || die "cannot find jq"
+OD=$(command -v od) || die "cannot find od"
+RM=$(command -v rm) || die "cannot find rm"
+TR=$(command -v tr) || die "cannot find rt"
+WC=$(command -v wc) || die "cannot find wc"
+CAT=$(command -v cat) || die "cannot find cat"
+CUT=$(command -v cut) || die "cannot find cut"
+SED=$(command -v sed) || die "cannot find sed"
+XXD=$(command -v xxd) || die "cannot find xxd"
+DATE=$(command -v date) || die "cannot find date"
+FOLD=$(command -v fold) || die "cannot find fold"
+OSSL=$(command -v openssl) || die "cannot find openssl"
+SLEEP=$(command -v sleep) || die "cannot find sleep"
+UNAME=$(command -v uname) || die "cannot find uname"
+PRINTF=$(command -v printf) || die "cannot find printf"
+MKTEMP=$(command -v mktemp) || die "cannot find mktemp"
+DNSLOOKUP=$(command -v host) || die "cannot find host"
+HTTPLOOKUP=$(command -v curl) || die "cannot find curl"
 
 # --- GLOBAL VARS ---
 _HEADERS=
@@ -53,6 +53,10 @@ _REQ_FILE=""
 _JWK64=""
 
 # --- FUNCTIONS ---
+die() {
+	echo $* >&2
+	exit 1
+}
 find_conf() {
 	local _f
 	for _f in "/etc/ACME.conf" "/usr/local/etc/ACME.conf" "/app/config/ACME.conf"; do
