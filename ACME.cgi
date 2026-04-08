@@ -1931,6 +1931,11 @@ handle_authz() {
 					# no return
 				fi
 				;;
+			"processing")
+				# still trying
+				set_header "Retry-After: ${CLIENT_RETRY}"
+				# fall thru and return challenge body
+				;;
 			*)
 				log "ERROR" "authz: unknow challenge state ${status} for order${order}"
 				return_error 501 "serverInternal" "error seting order state to invalid"
