@@ -1,7 +1,7 @@
 # $OpenBSD$
 #
 COMMENT 	= rfc8555 compliant certificate registration authority
-VERSION  	= 0.1
+VERSION  	= 0.3
 DISTNAME	= ACME.cgi-${VERSION}
 CATEGORIES	= security
 HOMEPAGE	= https://github.com/mgraves00/ACME.cgi
@@ -21,7 +21,8 @@ NO_BUILD	= Yes
 NO_TEST		= Yes
 PKG_ARCH	= *
 
-RUN_DEPENDS	= textproc/jq net/curl security/pca
+# vim is required for xxd
+RUN_DEPENDS	= textproc/jq net/curl security/pca editors/vim,no_x11
 
 PREFIX =	${VARBASE}/www
 SUBST_VARS = VARBASE
