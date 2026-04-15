@@ -1132,9 +1132,11 @@ process_http01_request() {
 			log_debug "process_http01_request: retreived value: ${_val}"
 			x=$(compare_http_token "${_acct}" "${_token}" "${_val}")
 			if [ $? -eq 0 ]; then
+				log "INFO" "process_http01_request: token compare success"
 				_rc=0
 				break;
 			fi
+			log "ERROR" "process_http01_request: received token does not match expected"
 			# retreive succeeded... but token match failed
 			${PRINTF} '{"type": "connection", "desc": "tokens do not match" }'
 			break;
@@ -1173,9 +1175,11 @@ process_dns01_request() {
 				_resp=$(echo -n "${_resp}" | cut -f4 -d' ' | tr -d '"')
 				x=$(compare_dns_token "${_acct}" "${_token}" "${_resp}")
 				if [ $? -eq 0 ]; then
+					log "INFO" "process_dns01_request: token compare success"
 					_rc=0
 					break;
 				fi
+				log "ERROR" "process_dns01_request: received token does not match expected"
 				# retreive succeeded... but token match failed
 				${PRINTF} '{"type": "incorrectResponse, "desc": "tokens do not match" }'
 				break;
