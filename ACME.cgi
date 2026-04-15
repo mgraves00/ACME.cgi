@@ -741,6 +741,8 @@ verify_cert_req() {
 		if [ -n "${_valid_names}" ]; then
 			local _f=0
 			for _n in $(echo -n "${_valid_names}" | ${TR} ', ' '\n\n'); do
+				# remove any port number when doing compairson
+				_n=${_n%%:*}
 log_debug "verify_cert_req: checking name against ${_n}"
 				if [ "${_n}" == "${_dns}" ]; then
 					_f=1
