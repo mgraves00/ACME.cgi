@@ -688,7 +688,7 @@ verify_dns_name() {
 		return 1
 	fi
 	# make sure it doesn't start or end with hyphen
-	_t=$(echo "${_dns}" | ${SED} -n -E '/^[0-9a-z]([a-z0-9\.-]*[0-9a-z])?$/p')
+	_t=$(echo "${_dns}" | ${SED} -n -E '/^[0-9a-z:]([a-z0-9\.:-]*[0-9a-z])?$/p')
 	if [ -z "${_t}" ]; then
 		log_debug "verify_dns_name: name starts of ends with hyphen"
 		return 1
