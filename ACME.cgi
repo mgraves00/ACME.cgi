@@ -2094,7 +2094,7 @@ handle_finalize() {
 				${CAT} <<EOF>"${ACME_DIR}/certs/${order}.req"
 -----BEGIN CERTIFICATE REQUEST-----
 $(url_unprotect "${_csr}" )
------END CERTIFICATE REQUEST-----"
+-----END CERTIFICATE REQUEST-----
 EOF
 				if [ $? -ne 0 ]; then
 					log "ERROR" "finalize: error saving rquest"
