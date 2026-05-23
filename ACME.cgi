@@ -1567,12 +1567,14 @@ handle_account() {
 				return_error 400 "accountDoesNotExist" "account creation ignored at client request"
 			fi
 			# check contacts
-			contacts=$(query_req_field '.payload | .contact[] // ""')
-			if [ -z "${contacts}" ]; then
-				log_debug "handle_account: no contacts specified"
-				log "ERROR" "No contacts specified for new account ${acct}"
-				return_error 424 "invalidContact" "no contact informaton supplied"
-				# no return
+			if [ "$REQUIRE_EMAIL" -eq 1 ]; then
+				contacts=$(query_req_field '.payload | .contact[] // ""')
+				if [ -z "${contacts}" ]; then
+					log_debug "handle_account: no contacts specified"
+					log "ERROR" "No contacts specified for new account ${acct}"
+					return_error 424 "invalidContact" "no contact informaton supplied"
+					# no return
+				fi
 			fi
 			log_debug "handle_account: creating new account"
 			_BODY='{
@@ -2281,6 +2283,7 @@ ORDER_EXPIRE=${ORDER_EXPIRE:-300}
 VERIFY_TIMEOUT=${VERIFY_TIMEOUT:-1}
 VERIFY_RETRIES=${VERIFY_RETRIES:-1}
 VERIFY_DELAY=${VERIFY_DELAY:-1}
+REQUIRE_EMAIL=${REQUIRE_EMAIL:-1}
 CA_HELPER=${CA_HELPER:-"/cgi-bin/ACME_helper.sh"}
 DEBUG=${DEBUG:-0}
 DEVNUL=${DEVNUL:-"/dev/null"}
