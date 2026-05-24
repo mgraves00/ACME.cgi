@@ -13,8 +13,8 @@ PERMIT_DISTFILES = Yes
 
 GH_ACCOUNT 	= mgraves00
 GH_PROJECT 	= ACME.cgi
-GH_TAGNAME 	= v${VERSION}
-#GH_COMMIT	= 3fce5176be51c7342e77b646e0274c2fa770f1ca
+#GH_TAGNAME 	= v${VERSION}
+GH_COMMIT	= c6990f7fc40c32286305050fd5c39a075b739153
 
 CONFIG_STYLE = none
 NO_BUILD	= Yes
@@ -22,7 +22,7 @@ NO_TEST		= Yes
 PKG_ARCH	= *
 
 # vim is required for xxd
-RUN_DEPENDS	= textproc/jq net/curl security/pca editors/vim,no_x11
+RUN_DEPENDS    = textproc/jq net/curl security/pca editors/vim,no_x11
 
 PREFIX =	${VARBASE}/www
 SUBST_VARS = VARBASE
