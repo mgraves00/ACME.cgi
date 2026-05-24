@@ -32,7 +32,7 @@ CUT=$(command -v cut)
 
 find_conf() {
 	local _f
-	for _f in "/etc/ACME_helper.conf" "/usr/local/etc/ACME_helper.conf" "/app/config/ACME_helper.conf"; do
+	for _f in "/etc/ACME_helper.conf" "/var/www/etc/ACME_helper.conf" "/usr/local/etc/ACME_helper.conf" "/app/config/ACME_helper.conf"; do
 		if [ -f "${_f}" ]; then
 			echo ${_f}
 			return
