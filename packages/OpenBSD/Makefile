@@ -1,7 +1,7 @@
 # $OpenBSD$
 #
 COMMENT 	= rfc8555 compliant certificate registration authority
-VERSION  	= 0.3
+VERSION  	= 0.4
 DISTNAME	= ACME.cgi-${VERSION}
 CATEGORIES	= security
 HOMEPAGE	= https://github.com/mgraves00/ACME.cgi
