@@ -185,3 +185,39 @@ for _o in $(${LS} "${ACME_DIR}/accts"); do
 	esac
 done
 
+# cleanup expired certificates
+find_conf() {
+	local _f
+	for _f in "/etc/ACME_helper.conf" "/var/www/etc/ACME_helper.conf" "/usr/local/etc/ACME_helper.conf" "/app/config/ACME_helper.conf"; do
+		if [ -f "${_f}" ]; then
+			echo ${_f}
+			return
+		fi
+	done
+	echo ""
+}
+
+conf=$(find_conf)
+if [ -z "${conf}" ]; then
+	echo "Status: 500 config not found"
+	exit 1
+else
+	. "${conf}"
+fi
+PCA=$(command -v pca) || { echo "cannot find PCA"; exit 1; }
+
+TF=`mktemp`
+now=`TZ=GMT date -j +"%s"`
+${PCA} ${CA_NAME}  show cert -client -expire >$TF
+cat $TF | sed -r 's/^(.*): notAfter=(.*)$/\1 \2/' | while read device exptime; do
+        epoch=`TZ=GMT date -j -f "%b %e %H:%M:%S %Y %Z" +"%s" "${exptime}"`
+		if [ $epoch -lt $now ]; then
+			echo -n "cleaning up $device ..."
+			${PCA} ${CA_NAME} revoke -name $device
+			${PCA} ${CA_NAME} del cert -name $device
+			${PCA} ${CA_NAME} del req -name $device
+			echo "done"
+		fi
+done
+rm -f $TF
+
