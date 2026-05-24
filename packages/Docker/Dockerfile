@@ -14,7 +14,7 @@ RUN chown nginx:nginx /app/html
 
 FROM builder as acmecgi
 ARG NAME="ACME.cgi"
-ARG VER="0.3"
+ARG VERSION="0.4"
 
 RUN mkdir /app/cgi-bin
 RUN mkdir -p -m 775 /app/data/pca
