@@ -31,6 +31,17 @@ JQ=$(command -v jq)
 RM=$(command -v rm)
 DATE=$(command -v date)
 CAT=$(command -v cat)
+PCA=$(command -v pca)
+MKTEMP=$(command -v mktemp)
+UNAME=$(command -v uname)
+
+die() {
+	echo "$*"
+	if [ -n "${TF}" -a -f "${TF}" ]; then
+		rm -f "${TF}"
+	fi
+	exit 1
+}
 
 find_conf() {
     local _f
@@ -67,6 +78,25 @@ rfc3339_to_epoch() {
 			;;
 		*)
 			_e=$(${DATE} -j -f "%Y-%m-%dT%H:%M:%S%z" +"%s" "$1")
+			;;
+	esac
+	if [ -z "${_e}" ]; then
+		echo "0"
+	fi
+	echo "${_e}"
+}
+
+certdate_to_epoch() {
+	local _e
+	if [ -z "$1" ]; then
+		echo "0"
+	fi
+	case $(${UNAME}) in
+		Linux)
+			_e=$(${DATE} +"%s" -d "$1")
+			;;
+		*)
+			_e=$(${DATE} -j -f "%b %e %H:%M:%S %Y %Z" +"%s" "$1")
 			;;
 	esac
 	if [ -z "${_e}" ]; then
@@ -186,7 +216,7 @@ for _o in $(${LS} "${ACME_DIR}/accts"); do
 done
 
 # cleanup expired certificates
-find_conf() {
+find_helper_conf() {
 	local _f
 	for _f in "/etc/ACME_helper.conf" "/var/www/etc/ACME_helper.conf" "/usr/local/etc/ACME_helper.conf" "/app/config/ACME_helper.conf"; do
 		if [ -f "${_f}" ]; then
@@ -197,25 +227,26 @@ find_conf() {
 	echo ""
 }
 
-conf=$(find_conf)
+conf=$(find_helper_conf)
 if [ -z "${conf}" ]; then
 	echo "Status: 500 config not found"
 	exit 1
 else
 	. "${conf}"
 fi
-PCA=$(command -v pca) || { echo "cannot find PCA"; exit 1; }
 
-TF=`mktemp`
-now=`TZ=GMT date -j +"%s"`
-${PCA} ${CA_NAME}  show cert -client -expire >$TF
+# MUST specify the PCA_ROOT or 'pca' tries to lookup pca in '$HOME/.pca'
+echo "cleaning up expired certs..."
+TF=$(${MKTEMP}) || die "cannot create temp file"
+now=`TZ=GMT now_epoch`
+PCA_ROOT=${PCA_ROOT} ${PCA} ${CA_NAME} show cert -client -expire >$TF || die "error finding expired client certs"
 cat $TF | sed -r 's/^(.*): notAfter=(.*)$/\1 \2/' | while read device exptime; do
-        epoch=`TZ=GMT date -j -f "%b %e %H:%M:%S %Y %Z" +"%s" "${exptime}"`
+        epoch=`TZ=GMT certdate_to_epoch "${exptime}"`
 		if [ $epoch -lt $now ]; then
-			echo -n "cleaning up $device ..."
-			${PCA} ${CA_NAME} revoke -name $device
-			${PCA} ${CA_NAME} del cert -name $device
-			${PCA} ${CA_NAME} del req -name $device
+			echo "cleaning up $device ..."
+			PCA_ROOT=${PCA_ROOT} ${PCA} ${CA_NAME} revoke -name $device
+			PCA_ROOT=${PCA_ROOT} ${PCA} ${CA_NAME} del cert -name $device
+			PCA_ROOT=${PCA_ROOT} ${PCA} ${CA_NAME} del req -name $device
 			echo "done"
 		fi
 done
