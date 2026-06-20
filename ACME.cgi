@@ -1882,7 +1882,7 @@ handle_order() {
   "notBefore": "'${notBefore}'",
   "notAfter": "'${notAfter}'",
   "identifiers": '${raw_identifiers}',
-  "authorizations" : ['$(echo "${auth_urls[@]}" | ${SED} -r 's/ /,/')'],
+  "authorizations" : ['$(echo "${auth_urls[@]}" | ${SED} -r 's/ /,/g')'],
   "finalize": "'${ISSUER_URL}'/finalize/'${acct}'_'${order}'"
 }'
 	echo "${_BODY}" > "${ACME_DIR}/orders/${acct}_${order}"
