@@ -1101,6 +1101,58 @@ compare_dns_token() {
 	return 1
 }
 
+process_otp01_request() {
+	local _resp _tmpfile _host _acct _token _retry _delay _timout _rc x _val
+	_otp=$1; shift
+	_host=$1
+	_acct=$2
+	_token=$3
+	_retry=${4:-1}
+	_delay=${5:-5}
+	_timout=${6:-5}
+	_rc=1
+	if [ -z "${_host}" -o -z "${_acct}" -o -z "${_token}" ]; then
+		log_debug "process_otp01_request: host or account or token empty"
+		return 1
+	fi
+	_tmpfile=$(${MKTEMP} -t "acme-challenge-${_host}.XXXXXXXX") || return 99
+	while [ "${_retry}" -gt 0 ]; do
+		#NOTE: per RFC8555 fetching challenge over http:// and not https://.  The requestor
+		#		has been validated over the https:// request prior to this step and a challenge
+		#		token has been exchanged.  The token + the requstors thumbprint (neither of which)
+		#		were sent in clear text, must be returned.  While it may be technically possible
+		#		for an attacker in the middle, guess the token + thumbprint, it is not likely.
+		#		In addition, the requestor is assumed to not have a certificate (or else why
+		#		would they request one.  As such, we have a chicken/egg problem if we were
+		#		to request using https.
+		_resp=$(${OTP_PROG} ${_otp} $_acct $_token $_counter) 
+		if [ $? -ne 0 ]; then
+			log_debug "process_otp01_request: error looking up record. ${_resp}"
+			${PRINTF} '{"type": "connection", "desc": "%s" }' "${_resp}"
+			# ok to loop
+		else
+			_val=$(${CAT} "${_tmpfile}")
+			log_debug "process_otp01_request: retreived value: ${_val}"
+			x=$(compare_http_token "${_acct}" "${_token}" "${_val}")
+			if [ $? -eq 0 ]; then
+				log "INFO" "process_hotp01_request: token compare success"
+				_rc=0
+				break;
+			fi
+			log "ERROR" "process_otp01_requet: received token does not match expected"
+			# retreive succeeded... but token match failed
+			${PRINTF} '{"type": "connection", "desc": "tokens do not match" }'
+			break;
+		fi
+		log_debug "process_otp01_requet: sleeping for ${_delay} retry ${_retry}"
+		${SLEEP} "${_delay}"
+		_retry=$((_retry-1))
+	done
+	${RM} -f "${_tmpfile}"
+	log_debug "process_otp01_requet: return ${_rc}"
+	return ${_rc}
+}
+
 process_http01_request() {
 	local _resp _tmpfile _host _acct _token _retry _delay _timout _rc x _val
 	_host=$1
@@ -1259,6 +1311,24 @@ process_challenge() {
 				;;
 			"http-01")
 				_ret=$(process_http01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}")
+				_rc=$?
+				if [ ${_rc} -eq 0 ]; then
+					# success... so break loop
+					log "INFO" "process_challenge: ${_chal} success"
+					break
+				fi
+				;;
+			"hotp-01")
+				_ret=$(process_otp01_request "hotp" "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}")
+				_rc=$?
+				if [ ${_rc} -eq 0 ]; then
+					# success... so break loop
+					log "INFO" "process_challenge: ${_chal} success"
+					break
+				fi
+				;;
+			"totp-01")
+				_ret=$(process_otp01_request "totp" "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}")
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
 					# success... so break loop
@@ -1964,9 +2034,12 @@ handle_authz() {
 		fi
 		identifier=$(query_order_field "${order}" ".identifiers[${_i}]") || return_error 500 "serverInternal" "cannt retrieve identifires from order"
 		expires=$(query_order_field "${order}" ".expires") || return_error 500 "serverInternal" "cannot retrieve expire from order"
+#XXX: the token for otp isn´tright... 
 		challenges='[
 { "type": "http-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
-{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" }
+{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
+{ "type": "hotp-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
+{ "type": "totp-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" }
 ]'
 		_BODY='{ "status": "pending", "expires": "'${expires}'", "identifier": '${identifier}', "challenges": '${challenges}' }'
 		# save challenge document
