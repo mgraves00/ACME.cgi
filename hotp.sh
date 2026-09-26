@@ -1,6 +1,8 @@
 #!/bin/ksh
 
-# This script generates the HOTP decimal in accordance with RFC 4226
+# This script generates the HOTP decimal in accordance with RFC 4226.
+# If the counter is now()/30 it will generate an TOTP decimal in
+# accordance with RFC 6238.
 
 # BSD 2-Clause License
 # 
