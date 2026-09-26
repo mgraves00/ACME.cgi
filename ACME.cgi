@@ -638,6 +638,7 @@ set_challenge_field() {
 	return 0
 }
 
+#DESC: extract the SAN from a certificate
 #NOTE: return comma separated list
 extract_san() {
 	local _sans _reqfile _typ
@@ -655,6 +656,7 @@ extract_san() {
 	return 0
 }
 
+#DESC: take a DNS name and validate that it is valid
 verify_dns_name() {
 	local _dns _t _p
 	_dns=$1
@@ -714,11 +716,12 @@ verify_dns_name() {
 	fi
 	#NOTE: if we start accepting IP: based SANS... add the following checks
 	#	address is not one of: private, loopback, link_local, unspecified,
-	#	  multicast, broadcast
-	#	address is actually a valid IP address
+	#	  multicast, broadcast address is actually a valid IP address
 	return 0
 }
 
+#DESC: verifies that the certificate requested has a valid
+#		subject and SAN values that are valid DNS
 verify_cert_req() {
 	local _sans _s _n _typ _dns _reqfile _valid_names
 	_reqfile=$1; shift
@@ -765,6 +768,8 @@ log_debug "verify_cert_req: checking name against ${_n}"
 	return 0
 }
 
+#DESC: generate a public PEM from a jwk
+#NOTE: handles both EC and RSA types
 jwk_to_pem() {
 	local _kty _sig _pem _jwk
 	_jwk=$1
@@ -829,6 +834,7 @@ jwk_to_pem() {
 	return 0
 }
 
+#DESC: verifies the jwk64 signature.
 verify_signature() {
 	local _sigfile _ret _hash _jwk64 _alg _sig _pemfile
 	local _jwk64=$1
@@ -878,7 +884,9 @@ verify_signature() {
 }
 
 # see section 6.2
-# validate the JSON Web Signature
+#DESC: check that the JSON Web Signature is valid against
+#		the signature that was already stored as part of
+#		account.
 validate_jws() {
 	local _pem _pemfile _acct _alg _jwk64 _kid
 	_jwk64=$(echo -n "${_JWK64}" | ${TR} -d '\n\r\t ')
@@ -961,6 +969,7 @@ set_header() {
 	fi
 }
 
+#DESC: revoke the certificate that was specified in the request
 process_revoke() {
 #	local _o=$1
 	local _tmpfile
@@ -1004,6 +1013,7 @@ process_revoke() {
 	return ${_rc}	
 }
 
+#DESC: sign the already saved CSR creating the certificate PEM file.
 process_csr() {
 	local _ret _o
 	_o=$1
@@ -1023,12 +1033,14 @@ process_csr() {
 	return 0	
 }
 
+#DESC: create the key for the account based on the JWK string provided
 jwk_to_key() {
 	local _a=$1
 	_a=$(echo -n "${_a}" | ${TR} -d " " | ${OSSL} dgst -sha256 | cut -f2 -d' ')
 	echo "$_a"
 }
 
+#DESC: generate the account hash from the provide jwk in the request
 jwk_to_acct() {
 	local _a
 	_a=$(query_req_field '.protected | .jwk // ""')
@@ -1040,7 +1052,8 @@ jwk_to_acct() {
 	return 0
 }
 
-# output error to STDOUT
+#DESC: generate the account thumbprint
+#NOTE: output error to STDOUT
 gen_thumbprint() {
 	local _ret _jwk _acct
 	_acct=$1
@@ -1057,6 +1070,7 @@ gen_thumbprint() {
 		echo "failed to retrieve jwk"
 		return 1
 	fi
+	# take the _jwk for the account, strip the space, create a SHA256 digest, base64 binary digest and url_protect
 	_ret=$(echo -n "${_jwk}" | ${TR} -d " " | ${OSSL} dgst -sha256 -binary | ${OSSL} base64 -a | url_protect)
 	echo "${_ret}"
 }
@@ -1101,6 +1115,9 @@ compare_dns_token() {
 	return 1
 }
 
+#DESC: process the {T,H}OTP information
+#NOTE:	this the account, secret, and index must already be on the server
+#		or created somewhere else.
 process_otp01_request() {
 	local _resp _tmpfile _host _acct _token _retry _delay _timout _rc x _val
 	_otp=$1; shift
@@ -1115,17 +1132,13 @@ process_otp01_request() {
 		log_debug "process_otp01_request: host or account or token empty"
 		return 1
 	fi
-	_tmpfile=$(${MKTEMP} -t "acme-challenge-${_host}.XXXXXXXX") || return 99
-	while [ "${_retry}" -gt 0 ]; do
-		#NOTE: per RFC8555 fetching challenge over http:// and not https://.  The requestor
-		#		has been validated over the https:// request prior to this step and a challenge
-		#		token has been exchanged.  The token + the requstors thumbprint (neither of which)
-		#		were sent in clear text, must be returned.  While it may be technically possible
-		#		for an attacker in the middle, guess the token + thumbprint, it is not likely.
-		#		In addition, the requestor is assumed to not have a certificate (or else why
-		#		would they request one.  As such, we have a chicken/egg problem if we were
-		#		to request using https.
-		_resp=$(${OTP_PROG} ${_otp} $_acct $_token $_counter) 
+	#NOTE: no reason to loop here. OTP_HELPER takes care of access to the secrets
+#	_tmpfile=$(${MKTEMP} -t "acme-challenge-${_host}.XXXXXXXX") || return 99
+#	while [ "${_retry}" -gt 0 ]; do
+		#XXX need to get _acct to be the account name to use
+		#XXX need to get _token to be the token the user provided
+		#XXX need to get _counter to be the counter the user provided (if HOTP)
+		_resp=$(${OTP_HELPER} ${_otp} $_acct $_token $_counter) 
 		if [ $? -ne 0 ]; then
 			log_debug "process_otp01_request: error looking up record. ${_resp}"
 			${PRINTF} '{"type": "connection", "desc": "%s" }' "${_resp}"
@@ -1144,15 +1157,16 @@ process_otp01_request() {
 			${PRINTF} '{"type": "connection", "desc": "tokens do not match" }'
 			break;
 		fi
-		log_debug "process_otp01_requet: sleeping for ${_delay} retry ${_retry}"
-		${SLEEP} "${_delay}"
-		_retry=$((_retry-1))
-	done
-	${RM} -f "${_tmpfile}"
+#		log_debug "process_otp01_requet: sleeping for ${_delay} retry ${_retry}"
+#		${SLEEP} "${_delay}"
+#		_retry=$((_retry-1))
+#	done
+#	${RM} -f "${_tmpfile}"
 	log_debug "process_otp01_requet: return ${_rc}"
 	return ${_rc}
 }
 
+#DESC: query http server the provided for the specified token file.
 process_http01_request() {
 	local _resp _tmpfile _host _acct _token _retry _delay _timout _rc x _val
 	_host=$1
@@ -1204,6 +1218,8 @@ process_http01_request() {
 	return ${_rc}
 }
 
+#DESC: query the provided DNS TXT record(s) for the name(s)
+#	   requested.
 process_dns01_request() {
 	local _resp _host _acct _token _retry _delay _timout _rc
 	_host=$1
@@ -1247,6 +1263,12 @@ process_dns01_request() {
 	return ${_rc}
 }
 
+#DESC: called from respon of -x with challenge "number"
+#NOTE: calls process_*_request() function based on the type of 
+#      challenge that the client has sent.
+#	   no return.  exits setting rc value to 0 or 1 which is
+#      not used by the calling CGI script.  All communication
+#      is done by setting the status of the challenge.
 process_challenge() {
 	local _status _acct _i _ret _rc challenges target _chal _rc
 	_chal=$1
@@ -1398,6 +1420,8 @@ process_challenge() {
 	exit 1
 }
 
+#DESC: set the error information to return and error to the client
+#NOTE: no return
 return_error() {
 	local _hc _ec _msg
 	_hc=$1; shift
@@ -1414,7 +1438,8 @@ return_error() {
 }
 
 #DESC: output the return state, header and body(if any)
-#NOTE: no return
+#NOTE: no return, exits with code 0 so CGI return information
+#      correctly to requesting client
 return_result() {
 	local _h _hc _msg _len
 	_hc=$1; shift
@@ -2038,8 +2063,8 @@ handle_authz() {
 		challenges='[
 { "type": "http-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
 { "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
-{ "type": "hotp-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
-{ "type": "totp-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" }
+{ "type": "hotp-01", "url": "'${ISSUER_URL}'/chalotp/'${authz}'", "status": "pending", "token": "'${token}'" },
+{ "type": "totp-01", "url": "'${ISSUER_URL}'/chalotp/'${authz}'", "status": "pending", "token": "'${token}'" }
 ]'
 		_BODY='{ "status": "pending", "expires": "'${expires}'", "identifier": '${identifier}', "challenges": '${challenges}' }'
 		# save challenge document
@@ -2051,6 +2076,90 @@ handle_authz() {
 		fi
 	fi
 	log "INFO" "authz: success"
+	return_result 200 "OK"
+	# no return
+}
+
+handle_chalotp() {
+	local acct status authz
+	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log "INFO" "chalotp: request"
+	# abusing the acct response
+	acct=$(verify_acct) || return_error 400 "${acct}"
+	authz=$(extract_id)
+	if [ -z "$authz" ]; then
+		log "ERROR" "chalotp: no authz specified"
+		return_error 400 "malformed" "no order in url"
+		# no return
+	fi
+	log "INFO" "chalotp: authz ${authz}"
+	if [ -f "${ACME_DIR}/challenges/${authz}" ]; then
+#XXX the client calls us... do they provide the 6 digit key?
+		status=$(query_challenge_field "${authz}" '.status // ""') || return_error 500 "serverInternal" "cannot find status"
+		log "INFO" "chalotp: status ${status}"
+		# Check challenge status...
+		case "${status}" in
+			"pending")
+				set_header "Retry-After: ${CLIENT_RETRY}"
+				_BODY=$(query_challenge_field "${authz}" '.challenges // ""') || return_error 500 "serverInternal" "error parsing challenges"
+				if [ -z "${_BODY}" ]; then
+					# no challenges found...
+					log "ERROR" "chalotp: no valid challenges found"
+					return_error 400 "malformed" "no valid challenges found"
+					# no return
+				fi
+				log "INFO" "chalotp: calling process"
+				# call ourselves to process the order
+# in other cases http-01 and dns-01, the server reaches out to some determined location to validate that the
+# token + hash(account) match.  But here, we want the client to already know the info and stend it to us so
+# we can just validate it.
+#				$0 -x "${authz}"
+				# actaully return!
+				;;
+			"processing")
+				# still trying
+				set_header "Retry-After: ${CLIENT_RETRY}"
+				log "WARN" "chalotp: alredy processing"
+				return_result "204" "No Content"
+				# no return
+				;;
+			"valid")
+				# done... return first challenge object that has status of 'valid'
+				_BODY=$(query_challenge_field "${authz}" '.challenges | map(select(.status == "valid")) | .[0] // ""') || return_error 500 "serverInternal" "error parsing challenges"
+				if [ -z "${_BODY}" ]; then
+					log "ERROR" "challenge: no valid challenges found"
+					# no challenges found...
+					return_error 400 "malformed" "no valid challenges found"
+					# no return
+				fi
+				log "INFO" "challenge: valid"
+				return_result 200 "OK"
+				# no return
+				;;
+			"invalid")
+				_BODY=$(query_challenge_field "${authz}" '.challenges | map(select(.status == "invalid")) | .[0] // ""') || return_error 500 "serverInternal" "error parsing challenges"
+				if [ -z "${_BODY}" ]; then
+					log "ERROR" "chalotp: no valid challenges found"
+					# no challenges found...
+					return_error 400 "malformed" "no valid challenges found"
+					# no return
+				fi
+				log "INFO" "chalotp: invalid"
+				return_result 200 "OK"
+				# no return
+				;;
+			*)
+				log "ERROR" "chalotp: unhandled status: ${status}"
+				return_error 500 "serverInternal" "invalid challenge state: ${status}"
+				# no return
+				;;
+		esac
+	else
+		log "ERROR" "chalotp: invalid challenge ${authz}"
+		return_error 401 "invalidChallenge" "cannot find requested challenge"
+		# no return
+	fi
+	log "INFO" "chalotp: success"
 	return_result 200 "OK"
 	# no return
 }
@@ -2358,6 +2467,7 @@ VERIFY_RETRIES=${VERIFY_RETRIES:-1}
 VERIFY_DELAY=${VERIFY_DELAY:-1}
 REQUIRE_EMAIL=${REQUIRE_EMAIL:-1}
 CA_HELPER=${CA_HELPER:-"/cgi-bin/ACME_helper.sh"}
+OTP_HELPER=${OTP_HELPER:-"/cgi-bin/OTP_helper.sh"}
 DEBUG=${DEBUG:-0}
 DEVNUL=${DEVNUL:-"/dev/null"}
 # default max size is 64k...
@@ -2475,6 +2585,14 @@ case "$DOCUMENT_URI" in
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
         handle_challenge
+		# no return
+        ;;
+	*"/chalotp"*)
+		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
+		check_url "challenge" || return_error 400 "malformed" "url doesn't match request"
+		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
+		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+        handle_chalotp
 		# no return
         ;;
 	*"/finalize"*)
