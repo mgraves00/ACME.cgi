@@ -2089,7 +2089,7 @@ handle_authz() {
 #XXX: the token for otp isn´tright... 
 		challenges='[
 { "type": "http-01", "url": "'${ISSUER_URL}'/challenge/1/'${authz}'", "status": "pending", "token": "'${token1}'" },
-{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/2/'${authz}'", "status": "pending", "token": "'${token2}'" },
+{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/2/'${authz}'", "status": "pending", "token": "'${token2}'" }
 ]'
 #{ "type": "hotp-01", "url": "'${ISSUER_URL}'/chalotp/3/'${authz}'", "status": "pending", "token": "'${token3}'" },
 #{ "type": "totp-01", "url": "'${ISSUER_URL}'/chalotp/4/'${authz}'", "status": "pending", "token": "'${token4}'" }
