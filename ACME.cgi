@@ -437,6 +437,19 @@ extract_id() {
 	echo "${_r}"
 }
 
+# extracts the challenge index form a string like
+# /acme/challenge/1/7d699349640f61ff2ac30fb37b2214b7ae8a0ba757f8d74b8ecdf3569c85b3c7_b183ba518707c68f_2ce38d35d9f4c239_0
+# pre: /acme/challenge/
+# post: /7d699349640f61ff2ac30fb37b2214b7ae8a0ba757f8d74b8ecdf3569c85b3c7_b183ba518707c68f_2ce38d35d9f4c239_0
+extract_challenge_index() {
+	local _pre=$1
+	local _post=$2
+	local _r=${3:-${REQUEST_URI}}
+	local _r=${_r##${_pre}/}
+	local _r=${_r%%/${_post}}
+	echo $_r
+}
+
 read_content() {
 	local _sz
 	local _encstr
@@ -1488,14 +1501,14 @@ return_result() {
 	_hc=$1; shift
 	_msg=$*
 	_len=0
-	# set the Link header
-	set_header "Link: <${ISSUER_URL}/directory>;rel=\"index\""
 	# return the HTTP status back to CGI interperter
 	echo "Status: ${_hc} $(hc_string "${_hc}")"
 	# output the headers
 	for _h in "${_HEADERS[@]}"; do
 		echo "${_h}"
 	done
+	# force (possibly a second) Link header
+	echo "Link: <${ISSUER_URL}/directory>;rel=\"index\""
 #XXX this breaks things
 #	echo "Content-Length: ${#_BODY}"
 	echo
@@ -2225,13 +2238,20 @@ handle_challenge() {
 	fi
 	log "INFO" "challenge: authz ${authz}"
 	if [ -f "${ACME_DIR}/challenges/${authz}" ]; then
+		idx=$(extract_challenge_index "/acme/challenge" "$authz")
+		log_debug "challenge: challenge index '$idx'"
+		if [ -z "${idx}" ]; then
+			return_error 400 "malformed" "invalid challenge URL"
+			# no return
+		fi
+		set_header "Link: <${ISSUER_URL}/authz/${authz}>;rel=\"up\""
 		status=$(query_challenge_field "${authz}" '.status // ""') || return_error 500 "serverInternal" "cannot find status"
 		log "INFO" "challenge: status ${status}"
 		# Check challenge status...
 		case "${status}" in
 			"pending")
 				set_header "Retry-After: ${CLIENT_RETRY}"
-				_BODY=$(query_challenge_field "${authz}" '.challenges // ""') || return_error 500 "serverInternal" "error parsing challenges"
+				_BODY=$(query_challenge_field "${authz}" '.challenges | .[] | select(.url | contains ("/'${idx}'/")) // ""') || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
 					# no challenges found...
 					log "ERROR" "challenge: no valid challenges found"
