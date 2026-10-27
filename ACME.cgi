@@ -1150,12 +1150,13 @@ process_otp01_request() {
 			if [ $? -eq 0 ]; then
 				log "INFO" "process_hotp01_request: token compare success"
 				_rc=0
-				break;
+#				break;
+			else
+				log "ERROR" "process_otp01_requet: received token does not match expected"
+				# retreive succeeded... but token match failed
+				${PRINTF} '{"type": "connection", "desc": "tokens do not match" }'
+#				break;
 			fi
-			log "ERROR" "process_otp01_requet: received token does not match expected"
-			# retreive succeeded... but token match failed
-			${PRINTF} '{"type": "connection", "desc": "tokens do not match" }'
-			break;
 		fi
 #		log_debug "process_otp01_requet: sleeping for ${_delay} retry ${_retry}"
 #		${SLEEP} "${_delay}"
@@ -1675,8 +1676,8 @@ handle_account() {
 			_BODY='{
 "status": "valid", 
 "orders": "'${ISSUER_URL}'/orders/'${acct}'", 
-"termsOfServiceAgreed": "'$(query_req_field '.payload | .termsOfServiceAgreed')'", 
-"contact": '$(query_req_field '.payload | .contact')', 
+"termsOfServiceAgreed": '$(query_req_field '.payload | .termsOfServiceAgreed')',
+"contact": '$(query_req_field '.payload | .contact // []')', 
 "jwk": '$(query_req_field '.protected | .jwk')'
 }'
 			echo "$_BODY" > "${ACME_DIR}/accts/${acct}"
