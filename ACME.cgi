@@ -1243,7 +1243,7 @@ process_http01_request() {
 		_resp=$(${HTTPLOOKUP} --silent --connect-timeout "${_timout}" -A "ACME.cgi challenge test" -o "${_tmpfile}" "http://${_host}/.well-known/acme-challenge/${_token}" 2>&1)
 		if [ $? -ne 0 ]; then
 			log_debug "process_http01_request: error looking up record. ${_resp}"
-			${PRINTF} '{"type": "connection", "desc": "%s" }' "${_resp}"
+			${PRINTF} '{"type": "urn:ietf:params:acme:error:connection", "details": "%s" }' "${_resp}"
 			# ok to loop
 		else
 			_val=$(${CAT} "${_tmpfile}")
@@ -1256,7 +1256,7 @@ process_http01_request() {
 			fi
 			log "ERROR" "process_http01_request: received token does not match expected"
 			# retreive succeeded... but token match failed
-			${PRINTF} '{"type": "connection", "desc": "tokens do not match" }'
+			${PRINTF} '{"type": "urn:ietf:params:acme:error:connection", "details": "tokens do not match" }'
 			break;
 		fi
 		log_debug "process_http01_request: sleeping for ${_delay} retry ${_retry}"
@@ -1281,7 +1281,7 @@ process_dns01_request() {
 	_rc=1
 	if [ -z "${_host}" -o -z "${_token}" ]; then
 		log_debug "process_dns01_request: host or token empty"
-		${PRINTF} '{"type": "incorrectResponse, "desc": "tokens" }'
+		${PRINTF} '{"type": "urn:ietf:params:acme:error:dns", "details": "tokens" }'
 		return 1
 	fi
 	while [ "${_retry}" -gt 0 ]; do
@@ -1301,7 +1301,7 @@ process_dns01_request() {
 				fi
 				log "ERROR" "process_dns01_request: received token does not match expected"
 				# retreive succeeded... but token match failed
-				${PRINTF} '{"type": "incorrectResponse, "desc": "tokens do not match" }'
+				${PRINTF} '{"type": "urn:ietf:params:acme:error:dns", "details": "tokens do not mactch" }'
 				break;
 				;;
 		esac
@@ -1422,17 +1422,16 @@ process_challenge() {
 				_rc=1
 				break;
 			fi
-			set_challenge_field "${_chal}" '.status = "invalid"'
+			set_challenge_field "${_chal}" '.challenges['${_i}'].error = ${_ret}'
 			if [ $? -ne 0 ]; then
-				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
+				log "ERROR" "process_challenge: failed to set challenge error information after unsuccessful test"
 				log_debug "process error: ${_ret}"
 				_rc=1
 				break;
 			fi
-#			set_challenge_field "${_chal}" '.error = ("'${_ret}'" | fromjson)'
-			set_challenge_field "${_chal}" '.error = {"type":"connnect","desc":"error"}'
+			set_challenge_field "${_chal}" '.status = "invalid"'
 			if [ $? -ne 0 ]; then
-				log "ERROR" "process_challenge: failed to set challenge error after unsuccessful test"
+				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
 				log_debug "process error: ${_ret}"
 				_rc=1
 				break;
@@ -1457,7 +1456,8 @@ process_challenge() {
 			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
 			exit 1
 		fi
-		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 "$(now_epoch)")'"'
+		set_challenge_field "${_chal}" '.challenges['${_i}'].validated = "'$(epoch_to_rfc3339 "$(now_epoch)")'"'
+#		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 "$(now_epoch)")'"'
 		if [ $? -ne 0 ]; then
 			log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
 			exit 1
@@ -2267,7 +2267,14 @@ handle_challenge() {
 				# still trying
 				set_header "Retry-After: ${CLIENT_RETRY}"
 				log "WARN" "challenge: alredy processing"
-				return_result "204" "No Content"
+				_BODY=$(query_challenge_field "${authz}" '.challenges | .[] | select(.url | contains ("/'${idx}'/")) // ""') || return_error 500 "serverInternal" "error parsing challenges"
+				if [ -z "${_BODY}" ]; then
+					# no challenges found...
+					log "ERROR" "challenge: no valid challenges found"
+					return_error 400 "malformed" "no valid challenges found"
+					# no return
+				fi
+				return_result "200" "OK"
 				# no return
 				;;
 			"valid")
