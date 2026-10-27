@@ -1446,6 +1446,8 @@ return_result() {
 	_hc=$1; shift
 	_msg=$*
 	_len=0
+	# set content type
+	set_header 'Content-Type: application/json'
 	# set the Link header
 	set_header "Link: <${ISSUER_URL}/directory>;rel=\"index\""
 	# return the HTTP status back to CGI interperter
@@ -2507,7 +2509,8 @@ if [ $# -gt 1 -a "$1" == "-x" ]; then
 fi
 
 # prevent caching of responses
-set_header "Cache-Control: public, max-age=0, no-cache"
+#set_header "Cache-Control: public, max-age=0, no-cache"
+set_header "Cache-Control: no-store"
 #SEE 6.1
 set_header 'Access-Control-Allow-Origin: *'
 
@@ -2549,7 +2552,7 @@ case "$DOCUMENT_URI" in
 		# no return
 		;;
 	*"/acct"*)
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_url "acct" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
