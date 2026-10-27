@@ -1462,8 +1462,6 @@ return_result() {
 	_hc=$1; shift
 	_msg=$*
 	_len=0
-	# set content type
-	set_header 'Content-Type: application/json'
 	# set the Link header
 	set_header "Link: <${ISSUER_URL}/directory>;rel=\"index\""
 	# return the HTTP status back to CGI interperter
@@ -1670,7 +1668,7 @@ handle_account() {
 		if [ ! -f ${ACME_DIR}/accts/${acct} ]; then
 			ore=$(query_req_field '.payload | .onlyReturnExisting // ""')
 			if [ -n "${ore}" -a "${ore}" == "true" ]; then
-				#NOTE: if this is the firest time the client is making the request, the account object
+				#NOTE: if this is the frist time the client is making the request, the account object
 				#      will not be created... but the PEM file has already been by validat_jws().  So
 				# 	   check and delete it if it's alone.
 				if [ -f "${ACME_DIR}/accts/${acct}.pem" -a ! -f "${ACME_DIR}/accts/${acct}" ]; then
@@ -2529,6 +2527,9 @@ fi
 set_header "Cache-Control: no-store"
 #SEE 6.1
 set_header 'Access-Control-Allow-Origin: *'
+
+# set the default header type.  errors and special responses override it
+set_header "Content-Type: application/json"
 
 # check dir structure
 check_dirs "${ACME_DIR}"
