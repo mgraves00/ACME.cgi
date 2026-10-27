@@ -2068,7 +2068,10 @@ handle_authz() {
 		esac
 	else
 		log "INFO" "authz: create new challenge"
-		token=$(${OSSL} rand -hex 16)
+		token1=$(${OSSL} rand -hex 16)
+		token2=$(${OSSL} rand -hex 16)
+#		token3=$(${OSSL} rand -hex 16)
+#		token4=$(${OSSL} rand -hex 16)
 		_i=$(echo -n "${authz}" | ${CUT} -f4 -d_)
 		if [ -z "${_i}" ]; then
 			return_error 501 "serverInternal" "error cannot find index"
@@ -2078,11 +2081,11 @@ handle_authz() {
 		expires=$(query_order_field "${order}" ".expires") || return_error 500 "serverInternal" "cannot retrieve expire from order"
 #XXX: the token for otp isn´tright... 
 		challenges='[
-{ "type": "http-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
-{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/'${authz}'", "status": "pending", "token": "'${token}'" },
-{ "type": "hotp-01", "url": "'${ISSUER_URL}'/chalotp/'${authz}'", "status": "pending", "token": "'${token}'" },
-{ "type": "totp-01", "url": "'${ISSUER_URL}'/chalotp/'${authz}'", "status": "pending", "token": "'${token}'" }
+{ "type": "http-01", "url": "'${ISSUER_URL}'/challenge/1/'${authz}'", "status": "pending", "token": "'${token1}'" },
+{ "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/2/'${authz}'", "status": "pending", "token": "'${token2}'" },
 ]'
+#{ "type": "hotp-01", "url": "'${ISSUER_URL}'/chalotp/3/'${authz}'", "status": "pending", "token": "'${token3}'" },
+#{ "type": "totp-01", "url": "'${ISSUER_URL}'/chalotp/4/'${authz}'", "status": "pending", "token": "'${token4}'" }
 		_BODY='{ "status": "pending", "expires": "'${expires}'", "identifier": '${identifier}', "challenges": '${challenges}' }'
 		# save challenge document
 		echo "$_BODY" > "${ACME_DIR}/challenges/${authz}"
