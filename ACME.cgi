@@ -1727,7 +1727,7 @@ handle_account() {
 		case "${status}" in
 			deactivated)
 				log "ERROR" "account state deactivated"
-				return_error 400 "unauthorized" "account ${acct} is ${status}"
+				return_error 401 "unauthorized" "account ${acct} is ${status}"
 				# no return
 				;;
 			valid)
