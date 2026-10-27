@@ -961,11 +961,27 @@ validate_jws() {
 }
 
 set_header() {
-	local _h=$1
+	local _h="$1"
+	local _k _i _f _m _x
 	if [ -z "$_HEADERS" ]; then
 		_HEADERS[0]="${_h}"
 	else
-		_HEADERS[${#_HEADERS[*]}]=${_h}
+		_m=${#_HEADERS[@]}; _i=0; _f=0
+		_k=$(echo "${_h}" | ${CUT} -f1 -d:)
+		while [ "${_i}" -le "${_m}" ]; do
+			_x=${_HEADERS[${_i}]}
+			case ${_x} in
+				"${_k}:"*) _f=1; break;;
+			esac
+			_i=$((_i+1))
+		done
+		if [ ${_f} -eq 1 ]; then
+			# header found, so replace
+			_HEADERS[${_i}]=${_h}
+		else
+			# header not found, so just add
+			_HEADERS[${#_HEADERS[*]}]=${_h}
+		fi
 	fi
 }
 
