@@ -2005,8 +2005,8 @@ handle_order() {
 		fi
 	fi
 	# verify we can handle the authz
-	raw_identifiers=$(query_req_field '.payload | .identifiers')
-	identifiers=$(query_req_field '.payload | .identifiers[] | "\(.type):\(.value)"')
+	raw_identifiers=$(query_req_field '.payload | .identifiers | unique')
+	identifiers=$(query_req_field '.payload | .identifiers | unique | .[] | "\(.type):\(.value)"')
 	order=$(${OSSL} rand -hex 8)
 	_i=0
 	for _id in ${identifiers}; do
@@ -2640,7 +2640,7 @@ case "$DOCUMENT_URI" in
 		check_url "orders" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
-        handle_account 
+        handle_orders
 		# no return
 		;;
     *"/order"*)
