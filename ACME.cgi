@@ -1444,11 +1444,17 @@ return_error() {
 	_hc=$1; shift
 	_ec=$1; shift
 	_msg=$*
+	_extra=""
 #	local _t=$(err_to_hc $_ec)
 #	_hc=${_t:-$_hc}
 	log "ERROR" "${_ec}: ${_msg}"
 	set_header 'Content-Type: application/problem+json'
-	_BODY='{"type":"urn:ietf:params:acme:error:'${_ec}'","detail":"'${_msg}'"}'
+	case "${_ec}" in
+		"badSignatureAlgorithm")
+			_extra=', "algorithms":["ES256","RS256"]'
+			;;
+	esac
+	_BODY='{"type":"urn:ietf:params:acme:error:'${_ec}'","detail":"'${_msg}'"'${_extra}'}'
 	log_debug "return_error: req: $(${CAT} "${_REQ_FILE}")"
 	return_result "${_hc}" ""
 	# no return
