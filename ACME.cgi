@@ -517,8 +517,11 @@ check_header() {
 	[ -z "${_h}" ] && return 1
 	# was a value specified? no? return 0 (the header was there, but we don care about the value)
 	[ -z "${_v}" ] && return 0
-	_h="HTTP_$(uc ${_h} | ${TR} '-' '_')"
+#	log_debug "check_header: '${_h}'"
+	_h=$(echo "${_h}"| ${TR} "a-z" "A-Z" | ${TR} '-' '_')
+#	log_debug "check_header: '${_h}'"
 	_v2=$(eval echo '$'${_h})
+#	log_debug "check_header: compare '${_v}' to '${_v2}'"
 	if [ "${_v}" == "${_v2}" ]; then
 		return 0
 	fi
@@ -763,7 +766,7 @@ verify_cert_req() {
 			for _n in $(echo -n "${_valid_names}" | ${TR} ', ' '\n\n'); do
 				# remove any port number when doing compairson
 				_n=${_n%%:*}
-log_debug "verify_cert_req: checking name against ${_n}"
+#log_debug "verify_cert_req: checking name against ${_n}"
 				if [ "${_n}" == "${_dns}" ]; then
 					_f=1
 					break;
@@ -2596,8 +2599,8 @@ case "$DOCUMENT_URI" in
 		# no return
 		;;
 	*"/acct"*)
-		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
 		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
+		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
 		check_url "acct" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
@@ -2605,8 +2608,8 @@ case "$DOCUMENT_URI" in
 		# no return
 		;;
 	*"/orders"*)
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "orders" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
@@ -2614,8 +2617,8 @@ case "$DOCUMENT_URI" in
 		# no return
 		;;
     *"/order"*)
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "order" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
@@ -2623,8 +2626,8 @@ case "$DOCUMENT_URI" in
 		# no return
         ;;
     *"/authz"*)
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "authz" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
@@ -2632,8 +2635,8 @@ case "$DOCUMENT_URI" in
 		# no return
         ;;
 	*"/challenge"*)
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "challenge" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
@@ -2641,8 +2644,8 @@ case "$DOCUMENT_URI" in
 		# no return
         ;;
 	*"/chalotp"*)
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "challenge" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
@@ -2650,8 +2653,8 @@ case "$DOCUMENT_URI" in
 		# no return
         ;;
 	*"/finalize"*)
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "finalize" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
@@ -2659,8 +2662,8 @@ case "$DOCUMENT_URI" in
 		# no return
         ;;
 	*"/certificate"*)
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "certificate" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
@@ -2668,8 +2671,8 @@ case "$DOCUMENT_URI" in
 		# no return
         ;;
 	*"/revoke"*)
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "revoke" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
@@ -2677,8 +2680,8 @@ case "$DOCUMENT_URI" in
 		# no return
         ;;
 	*"/keychange"*)
+		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_header "Content-Type" "application/jose+json" || return_error 415 "unsupported" "Unsupported Media Type"
-		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "key-change" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
