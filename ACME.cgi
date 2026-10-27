@@ -1612,7 +1612,8 @@ verify_acct() {
 		log_debug "verify_acct: account status ${status}"
 		if [ "${status}" != "valid" ]; then
 			log "ERROR" "verify_acct: account ${acct} is ${status}"
-			echo "accountNotValid" "account ${acct} is ${status}"
+#			echo "accountNotValid" "account ${acct} is ${status}"
+			echo "unauthorized" "account ${acct} is ${status}"
 			return 1
 		fi
 	fi
@@ -1719,7 +1720,7 @@ handle_account() {
 		fi
 	else
 		# existing account request
-		acct=$(verify_acct) || return_error 400 "${acct}"
+		acct=$(verify_acct) || return_error 401 ${acct}
 		log "INFO" "account: update request ${acct}"
 		# check the account status
 		status=$(query_account_field "${acct}" '.status') || return_error 404 "serverInternal" "missing account info"
@@ -1776,7 +1777,7 @@ handle_orders() {
 	local acct status olist
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
-	acct=$(verify_acct) || return_error 400 "${acct}"
+	acct=$(verify_acct) || return_error 401 ${acct}
 	olist=$(${LS} -1r "${ACME_DIR}/orders/${acct}_*" | ${JQ} -Rs '. | split("\n") | map(select (. != "")) | map("'${ISSUER_URL}'/order" + .) | { orders: .}')
 	log_debug "handle_orders: orders ${olist}"
 	_BODY="${olist}"
@@ -1791,7 +1792,7 @@ handle_key_change() {
 	log "INFO" "keychange: request"
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
-	acct=$(verify_acct) || return_error 400 "${acct}"
+	acct=$(verify_acct) || return_error 401 ${acct}
 	# The request has now been validated from the old key and the account is good.
 	# on all errors abort
 	# Verify that payload.signature has signed payload.protected & payload.payload
@@ -1923,7 +1924,7 @@ handle_order() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	log "INFO" "order request"
-	acct=$(verify_acct) || return_error 400 "${acct}"
+	acct=$(verify_acct) || return_error 401 ${acct}
 	order=$(extract_id)
 	_pl=$(query_req_field '.payload // ""')
 	# if payload is empty, then client is just looking for current status
@@ -2015,7 +2016,7 @@ handle_authz() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "authz: request"
 	# abusing the acct response
-	acct=$(verify_acct) || return_error 400 "${acct}"
+	acct=$(verify_acct) || return_error 401 ${acct}
 	authz=$(extract_id)
 	if [ -z "$authz" ]; then
 		log "ERROR" "authz: no authz specified"
@@ -2105,7 +2106,7 @@ handle_chalotp() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "chalotp: request"
 	# abusing the acct response
-	acct=$(verify_acct) || return_error 400 "${acct}"
+	acct=$(verify_acct) || return_error 401 ${acct}
 	authz=$(extract_id)
 	if [ -z "$authz" ]; then
 		log "ERROR" "chalotp: no authz specified"
@@ -2189,7 +2190,7 @@ handle_challenge() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "challenge: request"
 	# abusing the acct response
-	acct=$(verify_acct) || return_error 400 "${acct}"
+	acct=$(verify_acct) || return_error 401 ${acct}
 	authz=$(extract_id)
 	if [ -z "$authz" ]; then
 		log "ERROR" "challenge: no authz specified"
@@ -2269,7 +2270,7 @@ handle_finalize() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "finalize: process"
 	# abusing the acct response
-	acct=$(verify_acct) || return_error 400 "${acct}"
+	acct=$(verify_acct) || return_error 401 ${acct}
 	order=$(extract_id)
 	if [ -z "$order" ]; then
 		log "ERROR" "finalize: no order specified"
@@ -2395,7 +2396,7 @@ handle_certificate() {
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "certificate: process"
 	# abusing the acct response
-	acct=$(verify_acct) || return_error 400 "${acct}"
+	acct=$(verify_acct) || return_error 401 ${acct}
 	order=$(extract_id)
 	if [ -z "$order" ]; then
 		log "ERROR" "certificate: no order specified"
@@ -2434,7 +2435,7 @@ handle_revoke() {
 	local acct status _ret
 	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	log "INFO" "revoke process"
-	acct=$(verify_acct) || return_error 400 "${acct}"
+	acct=$(verify_acct) || return_error 401 ${acct}
 	_ret=$(process_revoke "${acct}")
 	case "$?" in
 		1) #alreadyRevoked
