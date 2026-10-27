@@ -1529,7 +1529,6 @@ check_url() {
 check_nonce() {
 	local _nt _ct _rc nonce _t
 	_nt=0
-	_ct=$(now_epoch)
 	_rc=1
 	nonce=$(query_req_field '.protected | .nonce')
 	if [ -z "${nonce}" ]; then
@@ -1543,6 +1542,7 @@ check_nonce() {
 	if [ -f "${ACME_DIR}/nonce/${nonce}" ]; then
 		_nt=$(${CAT} "${ACME_DIR}/nonce/${nonce}")
 		if [ -n "${_nt}" ]; then
+			_ct=$(now_epoch)
 			if [ "$((_nt + NONCE_EXPIRE))" -gt "${_ct}" ]; then
 				_rc=0
 			fi
@@ -2357,7 +2357,7 @@ EOF
 				;;
 			"pending")
 				log "ERROR" "finalize: pending"
-				return_error 499 "orderNotReady" "order not ready to be finalized"
+				return_error 403 "orderNotReady" "order not ready to be finalized"
 				# no return
 				;;
 			"processing")
@@ -2368,7 +2368,7 @@ EOF
 				;;
 			"invalid")
 				log "ERROR" "finalize: invalid"
-				return_error 499 "orderNotReady" "order error processing"
+				return_error 403 "orderNotReady" "order error processing"
 				# no return
 				;;
 			*)
@@ -2572,7 +2572,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 405 "malformed" "request expected POST-as-GET"
 		check_url "acct" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
         handle_account 
 		# no return
 		;;
@@ -2580,7 +2580,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "orders" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
         handle_account 
 		# no return
 		;;
@@ -2588,7 +2588,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "order" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
         handle_order
 		# no return
         ;;
@@ -2596,7 +2596,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "authz" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
         handle_authz
 		# no return
         ;;
@@ -2604,7 +2604,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "challenge" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
         handle_challenge
 		# no return
         ;;
@@ -2612,7 +2612,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "challenge" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
         handle_chalotp
 		# no return
         ;;
@@ -2620,7 +2620,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "finalize" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
         handle_finalize
 		# no return
         ;;
@@ -2628,7 +2628,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "certificate" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
         handle_certificate
 		# no return
         ;;
@@ -2636,7 +2636,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "revoke" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
 		handle_revoke
 		# no return
         ;;
@@ -2644,7 +2644,7 @@ case "$DOCUMENT_URI" in
 		check_post_as_get || return_error 400 "malformed" "request expected POST-as-GET"
 		check_url "key-change" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
-		validate_jws || return_error 400 "badPublicKey" "JWS could not be verified"
+		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
         handle_key_change 
 		# no return
 		;;
