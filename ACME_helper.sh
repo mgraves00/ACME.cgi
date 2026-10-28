@@ -69,6 +69,7 @@ fi
 CMD=$1; shift
 case "$CMD" in
 	"sign")
+		newsubj=""
 		REQFILE=$1; shift
 		CRTFILE=$1; shift
 		DAYS=${1:-${DEFAULT_DAYS}}
@@ -82,6 +83,23 @@ case "$CMD" in
 			echo "${PROG_NAME}: certificate file not specified"
 			exit 1
 		fi
+		# check to make sure the cert has a subject
+		subj=$(openssl req -in "$REQFILE" -noout -subject -nameopt RFC2253) || { echo "error finding subject in request"; exit 1; }
+		set --
+		if [ "$subj" == "subject=" -a $ADD_MISSING_SUBJ -eq 1 ]; then
+			# subject is missing from CSR.  extract first SAN
+			cn=$(openssl req -in "$REQFILE" -noout -text |
+				sed -n '/X509v3 Subject Alternative Name:/{n;p;q;}' |
+				tr ',' '\n' | sed -n 's/^ *DNS:\(.*\)$/\1/p' |
+				grep -E '^[A-Za-z0-9*][A-Za-z0-9.-]*$' |
+				awk 'length($0) <= 64 { print; exit }')
+			if [ -n "$cn" ]; then
+				newsubj="-subj /CN=$cn"
+			else
+				echo "${PROG_NAME}: error request missing subject"
+				exit 1
+			fi
+		fi
 		# import req
 		PCA_ROOT=${PCA_ROOT} ${PCA} "${CA_NAME}" import request -name "${REQNAME}" -file "${REQFILE}" 2>&1
 		if [ $? -ne 0 ]; then
@@ -89,7 +107,7 @@ case "$CMD" in
 			exit 1
 		fi
 		# sign req
-		PCA_ROOT=${PCA_ROOT} ${PCA} "${CA_NAME}" sign -days "${DAYS}" -name "${REQNAME}" -ext extension_acme 2>&1
+		PCA_ROOT=${PCA_ROOT} ${PCA} "${CA_NAME}" sign -days "${DAYS}" -name "${REQNAME}" -ext extension_acme $newsubj 2>&1
 		if [ $? -ne 0 ]; then
 			echo "${PROG_NAME}: error signing request"
 			exit 1
