@@ -1736,10 +1736,10 @@ handle_account() {
 			fi
 			log_debug "handle_account: creating new account"
 			_BODY='{
-"status": "valid", 
-"orders": "'${ISSUER_URL}'/orders/'${acct}'", 
+"status": "valid",
+"orders": "'${ISSUER_URL}'/orders/'${acct}'",
 "termsOfServiceAgreed": '$(query_req_field '.payload | .termsOfServiceAgreed')',
-"contact": '$(query_req_field '.payload | .contact // []')', 
+"contact": '$(query_req_field '.payload | .contact // []')',
 "jwk": '$(query_req_field '.protected | .jwk')'
 }'
 			echo "$_BODY" > "${ACME_DIR}/accts/${acct}"
@@ -1749,7 +1749,7 @@ handle_account() {
 				return_error 500 "serverInternal" "failed to save account"
 				# return
 			fi
-			_BODY=$(${CAT} "${ACME_DIR}/accts/${acct}")
+			_BODY=$(${CAT} "${ACME_DIR}/accts/${acct}" | ${JQ} 'del(.jwk)')
 			set_header "Location: ${ISSUER_URL}/acct/${acct}"
 			log "INFO" "Account ${acct} created"
 			return_result 201 "Created"
