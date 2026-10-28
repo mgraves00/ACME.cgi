@@ -1571,10 +1571,12 @@ check_nonce() {
 	_rc=1
 	nonce=$(query_req_field '.protected | .nonce')
 	if [ -z "${nonce}" ]; then
+		make_nonce
 		return $_rc
 	fi
 	_t=$(echo -n "${nonce}" | ${TR} -d '[:alnum:]')
 	if [ -n "${_t}" ]; then
+		make_nonce
 		# nonce name has invalid characters
 		return $_rc
 	fi
