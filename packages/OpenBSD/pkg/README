@@ -13,6 +13,7 @@ behind webserver) there are several programs that are required.
 	# acme helper programs
 	install -c -m 0555 -o root -g bin /bin/cat /var/www/bin/cat
 	install -c -m 0555 -o root -g bin /bin/sleep /var/www/bin/sleep
+	install -c -m 0555 -o root -g bin /bin/ls /var/www/bin/ls
 	install -c -m 0555 -o root -g bin /bin/rm /var/www/bin/rm
 	install -c -m 0555 -o root -g bin /usr/bin/cut /var/www/bin/cut
 	install -c -m 0555 -o root -g bin /usr/bin/mktemp /var/www/bin/mktemp

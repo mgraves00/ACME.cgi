@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # --- EXTERNAL PROGS ---
+LS=$(command -v ls) || die "cannot find ls"
 JQ=$(command -v jq) || die "cannot find jq"
 OD=$(command -v od) || die "cannot find od"
 RM=$(command -v rm) || die "cannot find rm"
