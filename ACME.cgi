@@ -1588,6 +1588,9 @@ check_nonce() {
 		fi
 		# remove old nonce
 		${RM} -f "${ACME_DIR}/nonce/${nonce}"
+	else
+		# nonce is invalid.  Still return error, but make a new one to return
+		make_nonce
 	fi	
 	return $_rc
 }
