@@ -939,7 +939,7 @@ validate_jws() {
 		log "ERROR" "validate_jws: cannot find account"
 		return 1
 	fi
-	log "INFO" "validate_jws: looking up account: ${_acct}"
+	log_debug "validate_jws: looking up account: ${_acct}"
 	_alg=$(query_req_field '.protected | .alg')
 	if [ $? -ne 0 ]; then
 		log "ERROR" "validate_jws: failed to get alg"
@@ -950,18 +950,18 @@ validate_jws() {
 	if [ ! -f "${_pemfile}" ]; then
 		_jwk=$(query_req_field '.protected | .jwk // ""')
 		if [ $? -ne 0 -o -z "${_jwk}" ]; then
-			log "ERROR" "validate_jws: failed to get jwk"
+			log "ERROR" "validate_jws: failed to get jwk ${_acct}"
 			return 1
 		fi
 		_pem=$(jwk_to_pem "${_jwk}")
 		if [ $? -ne 0 -o -z "${_pem}" ]; then
-			log "ERROR" "validate_jws: failed to generate pem"
+			log "ERROR" "validate_jws: failed to generate pem ${_acct}"
 			return 1
 		fi
 		# save pem file for future
 		echo -n "$_pem" > "${_pemfile}"
 		if [ $? -ne 0 ]; then
-			log "ERROR" "validate_jws: failed to save pem file"
+			log "ERROR" "validate_jws: failed to save pem file ${_acct}"
 			return 1
 		fi
 	else
@@ -982,15 +982,15 @@ validate_jws() {
 	fi
 	_sig=$(query_req_field '.signature')
 	if [ $? -ne 0 ]; then
-		log "ERROR" "validate_jws: failed get signature"
+		log "ERROR" "validate_jws: failed get signature ${_acct}"
 		return 1
 	fi
 	verify_signature "${_jwk64}" "${_alg}" "${_sig}" "${_pemfile}"
 	if [ $? -ne 0 ]; then
-		log "ERROR" "validate_jws: error verifying signature"
+		log "ERROR" "validate_jws: error verifying signature ${_acct}"
 		return 1
 	fi
-	log "INFO" "validate_jws: verify success"
+	log_debug "validate_jws: verify success ${_acct}"
 	return 0
 }
 
@@ -1410,7 +1410,7 @@ process_challenge() {
 				fi
 				;;
 			*)
-				log "ERROR" "process_challenge error: unknown type ${typ}"
+				log "ERROR" "process_challenge: error unknown type ${typ}"
 				_rc=1
 				;;
 		esac
@@ -1463,7 +1463,7 @@ process_challenge() {
 			log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
 			exit 1
 		fi
-		log "INFO" "process_challenge end: ${_chal}"
+		log "INFO" "process_challenge: end ${_chal}"
 		exit 0
 	fi
 	# we had all failures
@@ -1703,7 +1703,7 @@ handle_new_nonce() {
 #DESC: process account requests (add, update, deactivation)
 handle_account() {
 	local acct ore contacts new_contact status
-	make_nonce || return_error 500 "badNonce" "failed to create new nonce"
+#	make_nonce || return_error 500 "badNonce" "failed to create new nonce"
 	# check for account without a trailing slash "/".  if true, this is a new request
 	acct=${REQUEST_URI##*/acct}	
 	if [ -z "${acct}" ]; then
@@ -1751,7 +1751,7 @@ handle_account() {
 			fi
 			_BODY=$(${CAT} "${ACME_DIR}/accts/${acct}" | ${JQ} 'del(.jwk)')
 			set_header "Location: ${ISSUER_URL}/acct/${acct}"
-			log "INFO" "Account ${acct} created"
+			log "INFO" "Account created ${acct}"
 			return_result 201 "Created"
 			# no return
 		else
@@ -1777,7 +1777,7 @@ handle_account() {
 				# no return
 				;;
 			valid)
-				log "INFO" "account state valid"
+				log_debug "account state valid"
 				# just fall thru
 				;;
 			*)
@@ -1820,13 +1820,12 @@ handle_account() {
 # DESC: return a list of orders for a specified account
 handle_orders() {
 	local acct status olist
-	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+#	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	acct=$(verify_acct) || return_error 401 ${acct}
 	olist=$(${LS} -1r "${ACME_DIR}/orders/${acct}_*" | ${JQ} -Rs '. | split("\n") | map(select (. != "")) | map("'${ISSUER_URL}'/order" + .) | { orders: .}')
 	log_debug "handle_orders: orders ${olist}"
 	_BODY="${olist}"
-	log "INFO" "orders list returned"
 	return_result 200 "OK"
 	# no return
 }
@@ -1834,10 +1833,10 @@ handle_orders() {
 handle_key_change() {
 	local acct oacct _jwk nacct na_pro na_pay na_sig jwk64 _alg okey url nurl _pem _pemfile
 #### NOT TESTED
-	log "INFO" "keychange: request"
-	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+#	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
 	acct=$(verify_acct) || return_error 401 ${acct}
+	log_debug "keychange: request ${acct}"
 	# The request has now been validated from the old key and the account is good.
 	# on all errors abort
 	# Verify that payload.signature has signed payload.protected & payload.payload
@@ -1956,7 +1955,7 @@ handle_key_change() {
 		return_error 400 "serverInternal" "error deactivating old account"
 		# no return
 	fi
-	log "INFO" "keychange: account assigned new key"
+	log "INFO" "keychange: account assigned new key ${acct}"
 	return_result 200 "OK"
 	# no return
 }
@@ -1966,9 +1965,9 @@ handle_order() {
 	local notBefore notAfter
 	local raw_identifiers identifiers _pl wildcard _i t
 	typeset auth_urls
-	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+#	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 	# abusing the acct response
-	log "INFO" "order request"
+	log_debug "order request"
 	acct=$(verify_acct) || return_error 401 ${acct}
 	order=$(extract_id)
 	_pl=$(query_req_field '.payload // ""')
@@ -2058,8 +2057,8 @@ handle_order() {
 
 handle_authz() {
 	local acct status order authz identifier expires token _i challenges
-	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
-	log "INFO" "authz: request"
+#	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log_debug "authz: request"
 	# abusing the acct response
 	acct=$(verify_acct) || return_error 401 ${acct}
 	authz=$(extract_id)
@@ -2069,12 +2068,13 @@ handle_authz() {
 		# no return
 	fi
 	order=$(echo -n "${authz}" | ${CUT} -f1-2 -d"_")
-	log "INFO" "authz: authz ${authz}"
+	log_debug "authz: authz ${authz}"
 	if [ -f "${ACME_DIR}/challenges/${authz}" ]; then
 		log_debug "handle_authz: processing chanllenge ${authz}"
 		# just load the file for return.  The status will be updated by the testing functions
 		_BODY=$(${CAT} "${ACME_DIR}/challenges/${authz}")
 		status=$(query_challenge_field "$authz" '.status // ""')
+		log "INFO" "authz: order ${order} status ${status}"
 		case "${status}" in
 #			"deactivated")
 #				set_order_field "${order}" '.status = "deactivated"'
@@ -2107,13 +2107,13 @@ handle_authz() {
 				# fall thru and return challenge body
 				;;
 			*)
-				log "ERROR" "authz: unknow challenge state ${status} for order${order}"
+				log "ERROR" "authz: unknow challenge state ${status} for order ${order}"
 				return_error 501 "serverInternal" "error seting order state to invalid"
 				# no return
 				;;
 		esac
 	else
-		log "INFO" "authz: create new challenge"
+		log_debug "authz: create new challenge"
 		token1=$(${OSSL} rand -hex 16)
 		token2=$(${OSSL} rand -hex 16)
 #		token3=$(${OSSL} rand -hex 16)
@@ -2140,16 +2140,16 @@ handle_authz() {
 			return_error 500 "serverInternal" "error saving challenge object"
 			# no return
 		fi
+		log "INFO" "authz: challenge order created ${order}"
 	fi
-	log "INFO" "authz: success"
 	return_result 200 "OK"
 	# no return
 }
 
 handle_chalotp() {
 	local acct status authz
-	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
-	log "INFO" "chalotp: request"
+#	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log_debug "chalotp: request"
 	# abusing the acct response
 	acct=$(verify_acct) || return_error 401 ${acct}
 	authz=$(extract_id)
@@ -2158,7 +2158,7 @@ handle_chalotp() {
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
-	log "INFO" "chalotp: authz ${authz}"
+	log_debug "chalotp: authz ${authz}"
 	if [ -f "${ACME_DIR}/challenges/${authz}" ]; then
 #XXX the client calls us... do they provide the 6 digit key?
 		status=$(query_challenge_field "${authz}" '.status // ""') || return_error 500 "serverInternal" "cannot find status"
@@ -2232,8 +2232,8 @@ handle_chalotp() {
 
 handle_challenge() {
 	local acct status authz
-	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
-	log "INFO" "challenge: request"
+#	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log_debug "challenge: request"
 	# abusing the acct response
 	acct=$(verify_acct) || return_error 401 ${acct}
 	authz=$(extract_id)
@@ -2242,7 +2242,7 @@ handle_challenge() {
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
-	log "INFO" "challenge: authz ${authz}"
+	log_debug "challenge: authz ${authz}"
 	if [ -f "${ACME_DIR}/challenges/${authz}" ]; then
 		idx=$(extract_challenge_index "/acme/challenge" "$authz")
 		log_debug "challenge: challenge index '$idx'"
@@ -2252,7 +2252,7 @@ handle_challenge() {
 		fi
 		set_header "Link: <${ISSUER_URL}/authz/${authz}>;rel=\"up\""
 		status=$(query_challenge_field "${authz}" '.status // ""') || return_error 500 "serverInternal" "cannot find status"
-		log "INFO" "challenge: status ${status}"
+		log "INFO" "challenge: ${authz} status ${status}"
 		# Check challenge status...
 		case "${status}" in
 			"pending")
@@ -2264,7 +2264,7 @@ handle_challenge() {
 					return_error 400 "malformed" "no valid challenges found"
 					# no return
 				fi
-				log "INFO" "challenge: calling process"
+				log_debug "challenge: calling process"
 				# call ourselves to process the order
 				$0 -x "${authz}"
 				# actaully return!
@@ -2272,7 +2272,7 @@ handle_challenge() {
 			"processing")
 				# still trying
 				set_header "Retry-After: ${CLIENT_RETRY}"
-				log "WARN" "challenge: alredy processing"
+				log "WARN" "challenge: ${acct} alredy processing"
 				_BODY=$(query_challenge_field "${authz}" '.challenges | .[] | select(.url | contains ("/'${idx}'/")) // ""') || return_error 500 "serverInternal" "error parsing challenges"
 				if [ -z "${_BODY}" ]; then
 					# no challenges found...
@@ -2292,7 +2292,7 @@ handle_challenge() {
 					return_error 400 "malformed" "no valid challenges found"
 					# no return
 				fi
-				log "INFO" "challenge: valid"
+				log_debug "challenge: valid"
 				return_result 200 "OK"
 				# no return
 				;;
@@ -2304,7 +2304,7 @@ handle_challenge() {
 					return_error 400 "malformed" "no valid challenges found"
 					# no return
 				fi
-				log "INFO" "challenge: invalid"
+				log_debug "challenge: invalid"
 				return_result 200 "OK"
 				# no return
 				;;
@@ -2319,15 +2319,15 @@ handle_challenge() {
 		return_error 401 "invalidChallenge" "cannot find requested challenge"
 		# no return
 	fi
-	log "INFO" "challenge: success"
+	log_debug "challenge: success"
 	return_result 200 "OK"
 	# no return
 }
 
 handle_finalize() {
 	local acct status _csr _ret order _identifiers
-	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
-	log "INFO" "finalize: process"
+#	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log_debug "finalize: process"
 	# abusing the acct response
 	acct=$(verify_acct) || return_error 401 ${acct}
 	order=$(extract_id)
@@ -2336,13 +2336,13 @@ handle_finalize() {
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
-	log "INFO" "finalize: order ${order}"
 	if [ -f "${ACME_DIR}/orders/${order}" ]; then
 		status=$(query_order_field "${order}" '.status // ""') || return_error 500 "serverInternal" "cannot find order status"
 		log_debug "handle_finalize: order status ${status}"
+		log "INFO" "finalize: order ${order} status ${status}"
 		case "${status}" in
 			"ready")
-				log "INFO" "finalize: ready"
+				log_debug "finalize: ready"
 				set_order_field "${order}" '.status = "processing"'
 				if [ $? -ne 0 ]; then
 					log "ERROR" "could not set certificate statue to processing on order ${order}"
@@ -2414,7 +2414,7 @@ EOF
 				;;
 			"valid")
 				# order is valid... just return order
-				log "INFO" "finalize: valid"
+				log_debug "finalize: valid"
 				_BODY=$(${CAT} "${ACME_DIR}/orders/${order}")
 				# drop thru and return OK
 				;;
@@ -2425,7 +2425,7 @@ EOF
 				;;
 			"processing")
 				# order is processing... just return order
-				log "INFO" "finalize: processing"
+				log_debug "finalize: processing"
 				_BODY=$(${CAT} "${ACME_DIR}/orders/${order}")
 				# drop thru and return OK
 				;;
@@ -2445,15 +2445,15 @@ EOF
 		return_error 401 "invalidChallenge" "cannot find requested order"
 		# no return
 	fi
-	log "INFO" "finalize: success"
+	log_debug "finalize: success"
 	return_result 200 "OK"
 	# no return
 }
 
 handle_certificate() {
 	local acct status order
-	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
-	log "INFO" "certificate: process"
+#	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log_debug "certificate: process"
 	# abusing the acct response
 	acct=$(verify_acct) || return_error 401 ${acct}
 	order=$(extract_id)
@@ -2462,8 +2462,8 @@ handle_certificate() {
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
-	log "INFO" "certificate: handling order ${order}"
 	if [ -f "${ACME_DIR}/certs/${order}.pem" ]; then
+		log "INFO" "certificate: order ${order}"
 #NOTE: CAT to _BODY eats the newline and borks the cert. so replicate the
 # return_success() function.
 		set_header "Content-Type: application/pem-certificate-chain"
@@ -2481,20 +2481,21 @@ handle_certificate() {
 		log "INFO" "certificate: success"
 		exit 0
 	else
-		log "INFO" "certificate: invalid certificate request"
+		log "ERROR" "certificate: invalid certificate request"
 		return_error 401 "invalidChallenge" "cannot find requested order"
 		# no return
 	fi
-	log "INFO" "certificate: success"
+	log_debug "certificate: success"
 	return_result 200 "OK"
 	# no return
 }
 
 handle_revoke() {
 	local acct status _ret
-	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
-	log "INFO" "revoke process"
+#	make_nonce || return_error 400 "badNonce" "failed to create new nonce"
+	log_debug "revoke process"
 	acct=$(verify_acct) || return_error 401 ${acct}
+	log "INFO" "revoke: ${acct}"
 	_ret=$(process_revoke "${acct}")
 	case "$?" in
 		1) #alreadyRevoked
@@ -2515,7 +2516,7 @@ handle_revoke() {
 	esac
 
 	_BODY=""
-	log "INFO" "revoke success"
+	log_debug "revoke success"
 	return_result 200 "OK"
 	# no return
 }
@@ -2637,6 +2638,7 @@ case "$DOCUMENT_URI" in
 		check_url "acct" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
         handle_account 
 		# no return
 		;;
@@ -2646,6 +2648,7 @@ case "$DOCUMENT_URI" in
 		check_url "orders" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
         handle_orders
 		# no return
 		;;
@@ -2655,6 +2658,7 @@ case "$DOCUMENT_URI" in
 		check_url "order" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
         handle_order
 		# no return
         ;;
@@ -2664,6 +2668,7 @@ case "$DOCUMENT_URI" in
 		check_url "authz" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
         handle_authz
 		# no return
         ;;
@@ -2673,6 +2678,7 @@ case "$DOCUMENT_URI" in
 		check_url "challenge" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
         handle_challenge
 		# no return
         ;;
@@ -2682,6 +2688,7 @@ case "$DOCUMENT_URI" in
 		check_url "challenge" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
         handle_chalotp
 		# no return
         ;;
@@ -2691,6 +2698,7 @@ case "$DOCUMENT_URI" in
 		check_url "finalize" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
         handle_finalize
 		# no return
         ;;
@@ -2700,6 +2708,7 @@ case "$DOCUMENT_URI" in
 		check_url "certificate" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
         handle_certificate
 		# no return
         ;;
@@ -2709,6 +2718,7 @@ case "$DOCUMENT_URI" in
 		check_url "revoke" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
 		handle_revoke
 		# no return
         ;;
@@ -2718,6 +2728,7 @@ case "$DOCUMENT_URI" in
 		check_url "key-change" || return_error 400 "malformed" "url doesn't match request"
 		check_nonce || return_error 400 "badNonce" "Nonce could not be found or had expired"
 		validate_jws || return_error 400 "badSignatureAlgorithm" "JWS could not be verified"
+		make_nonce || return_error 400 "badNonce" "failed to create new nonce"
         handle_key_change 
 		# no return
 		;;
