@@ -13,11 +13,13 @@ and certificate revocation.
 - Simple setup.
 - Docker ready
 - IPv6 ready
-- integrates with PCA for certificate support
+- integrates with [PCA](https://github.com/mgraves00/pca) for certificate support
 
 ## Tested with
 - acme.sh
 - acme-client
+- certbot
+- lego
 
 ## Config/Environment Variables ACME.conf
 | Variable | Required | Default | Description |
@@ -45,6 +47,7 @@ and certificate revocation.
 | CA_NAME | Yes | none | Name of the certificate authority to use for the PCA command |
 | PCA_ROOT | Yes | /etc/pca | The root that the PCA command will use to store CA |
 | DEFAULT_DAYS | No | 90 | The default number of days a cert will be valid for if not specified |
+| ADD_MISSING_SUBJ | No | 0 | If a subject is missing withing a CSR the first SAN will be added |
 
 ## Setup
 ### Standalone
@@ -56,7 +59,7 @@ and certificate revocation.
 6. Setup cron to run ACME_cleaner.sh every 24 hours.
 
 If web server is in a chroot environment:
-1. Copy the following files into the chroot directory. Prog: jq, od, rm, tr, wc, cat, cut, sed, date, fold, openssl, sleep, uname, printf, mktemp, host, ftp/curl
+1. Copy the following files into the chroot directory. Prog: ls, jq, od, rm, tr, wc, cat, cut, sed, date, fold, openssl, sleep, uname, printf, mktemp, host, ftp/curl
 2. Update the *.conf files to account for web_root/ path.
 
 ### Docker
