@@ -1326,7 +1326,7 @@ process_challenge() {
 	local _status _acct _i _ret _rc challenges target _chal _rc
 	_chal=$1
 	_rc=0
-	log "INFO" "process_challenge: ${_chal}"
+	log "INFO" "process_challenge: ${_chal} start"
 	if [ ! -f "${ACME_DIR}/challenges/${_chal}" ]; then
 		log "ERROR" "process_challenge: cannot find challenge ${_chal}"
 		exit 1
@@ -1439,7 +1439,7 @@ process_challenge() {
 				_rc=1
 				break;
 			fi
-			log "WARN" "process_challenge: ${_chal} failed"
+			log "INFO" "process_challenge: ${_chal} status invalid"
 			_rc=1
 			break;
 		fi
@@ -1459,6 +1459,7 @@ process_challenge() {
 			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
 			exit 1
 		fi
+		log "INFO" "process_challenge: ${_chal} status valid"
 		set_challenge_field "${_chal}" '.challenges['${_i}'].validated = "'$(epoch_to_rfc3339 "$(now_epoch)")'"'
 #		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 "$(now_epoch)")'"'
 		if [ $? -ne 0 ]; then
@@ -2052,7 +2053,7 @@ handle_order() {
 		#no return
 	fi
 	# return success to requestor
-	log "INFO" "order: new order created ${acct}_${order}"
+	log "INFO" "order: ${acct}_${order} created"
 	return_result 201 "Created"
 	# no return
 }
@@ -2090,15 +2091,15 @@ handle_authz() {
 				# challenge is valid... or set order so to ready so cert can be generated
 				set_order_field "${order}" '.status = "ready"'
 				if [ $? -ne 0 ]; then
-					log "ERROR" "authz: could not set order state to valid for order ${order}"
-					return_error 501 "serverInternal" "error seting order state to valid"
+					log "ERROR" "authz: order ${order} could not set order state to ready"
+					return_error 501 "serverInternal" "error seting order state to ready"
 					# no return
 				fi
 				;;
 			"invalid")
 				set_order_field "${order}" '.status = "invalid"'
 				if [ $? -ne 0 ]; then
-					log "ERROR" "authz: could not set order state to invalid for order ${order}"
+					log "ERROR" "authz: order ${order} could not set order state to invalid"
 					return_error 501 "serverInternal" "error seting order state to invalid"
 					# no return
 				fi
@@ -2109,7 +2110,7 @@ handle_authz() {
 				# fall thru and return challenge body
 				;;
 			*)
-				log "ERROR" "authz: unknow challenge state ${status} for order ${order}"
+				log "ERROR" "authz: order ${order} status ${status} unknown"
 				return_error 501 "serverInternal" "error seting order state to invalid"
 				# no return
 				;;
@@ -2127,11 +2128,11 @@ handle_authz() {
 		fi
 		identifier=$(query_order_field "${order}" ".identifiers[${_i}]") || return_error 500 "serverInternal" "cannt retrieve identifires from order"
 		expires=$(query_order_field "${order}" ".expires") || return_error 500 "serverInternal" "cannot retrieve expire from order"
-#XXX: the token for otp isn´tright... 
 		challenges='[
 { "type": "http-01", "url": "'${ISSUER_URL}'/challenge/1/'${authz}'", "status": "pending", "token": "'${token1}'" },
 { "type": "dns-01", "url": "'${ISSUER_URL}'/challenge/2/'${authz}'", "status": "pending", "token": "'${token2}'" }
 ]'
+#XXX: the token for otp isn´tright... 
 #{ "type": "hotp-01", "url": "'${ISSUER_URL}'/chalotp/3/'${authz}'", "status": "pending", "token": "'${token3}'" },
 #{ "type": "totp-01", "url": "'${ISSUER_URL}'/chalotp/4/'${authz}'", "status": "pending", "token": "'${token4}'" }
 		_BODY='{ "status": "pending", "expires": "'${expires}'", "identifier": '${identifier}', "challenges": '${challenges}' }'
