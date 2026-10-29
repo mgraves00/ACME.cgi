@@ -71,7 +71,12 @@ find_conf() {
 }
 
 log_debug() {
-    if [ "$DEBUG" = "1" ]; then
+    if [ "$DEBUG" -gt "0" ]; then
+		log "DEBUG" "$*"
+    fi
+}
+log_debug2() {
+    if [ "$DEBUG" -gt "1" ]; then
 		log "DEBUG" "$*"
     fi
 }
@@ -456,7 +461,7 @@ read_content() {
 	local _encstr
 	if [ -n "${CONTENT_LENGTH}" ]; then
 		if [ "${CONTENT_LENGTH}" -gt "${MAX_REQUEST_SIZE}" ]; then
-			log "ERROR" "content size exceeded max size: ${CONTENT_LENGTH} too large"
+			log "ERROR" "read_content: content size exceeded max size: ${CONTENT_LENGTH} too large"
 			return_error 413 "malformed" "request too large"
 			# no return
 		fi
@@ -548,21 +553,22 @@ set_file_field() {
 	_file=$1
 	_f=$2
 	if [ -z "${_file}" ]; then
-		log_debug "set_file_filed: no file given"
+		log_debug2 "set_file_field: no file given"
 		return 1
 	fi
+	log_debug "set_file_field: file name ${_file}"
 	if [ ! -f "${_file}" ]; then
-		log_debug "set_file_field: no file ${_file}"
+		log_debug2 "set_file_field: no file ${_file}"
 		return 1
 	fi
 	_res=$(${CAT} "${_file}" | ${JQ} -cr "${_f}")
 	if [ $? -ne 0 ]; then
-		log_debug "set_file_field: error setting field ${_f} from ${_file}"
+		log_debug2 "set_file_field: error setting field ${_f} in ${_file}"
 		return 1
 	fi
 	echo "${_res}" >"${_file}"
 	if [ $? -ne 0 ]; then
-		log_debug "set_file_field: error saving file ${_file}"
+		log_debug2 "set_file_field: error saving file ${_file}"
 	fi
 	return 0
 }
@@ -572,18 +578,19 @@ query_file_field() {
 	_file=$1;
 	_f=$2;
 	if [ -z "${_file}" ]; then
-		log_debug "query_file_field: no file given"
+		log_debug2 "query_file_field: no file given"
 		echo ""
 		return 1
 	fi
+	log_debug "query_file_field: file name ${_file}"
 	if [ ! -s "${_file}" ]; then
-		log_debug "query_file_field: no file or size is 0: ${_file}"
+		log_debug2 "query_file_field: no file or size is 0: ${_file}"
 		echo ""
 		return 1
 	fi
 	_res=$(${CAT} "${_file}" | ${JQ} -cr "${_f}")
 	if [ $? -ne 0 ]; then
-		log_debug "query_file_field: error fetching field '${_f}' from ${_file}"
+		log_debug2 "query_file_field: error fetching field '${_f}' from ${_file}"
 #cat ${_file} >&2
 		echo ""
 		return 1
@@ -1165,6 +1172,7 @@ compare_dns_token() {
 	return 1
 }
 
+#XXX need to compare to http01 for updates/changes
 #DESC: process the {T,H}OTP information
 #NOTE:	this the account, secret, and index must already be on the server
 #		or created somewhere else.
@@ -1422,22 +1430,23 @@ process_challenge() {
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
 				log_debug "process error: ${_ret}"
-				_rc=1
-				break;
+#				_rc=1
+#				break;
 			fi
-			set_challenge_field "${_chal}" '.challenges['${_i}'].error = ${_ret}'
+#			set_challenge_field "${_chal}" '.challenges['${_i}'].error = '${_ret}
+			set_challenge_field "${_chal}" ".challenges[${_i}].error = ${_ret}"
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge error information after unsuccessful test"
 				log_debug "process error: ${_ret}"
-				_rc=1
-				break;
+#				_rc=1
+#				break;
 			fi
 			set_challenge_field "${_chal}" '.status = "invalid"'
 			if [ $? -ne 0 ]; then
 				log "ERROR" "process_challenge: failed to set challenge status to invalid after unsuccessful test"
 				log_debug "process error: ${_ret}"
-				_rc=1
-				break;
+#				_rc=1
+#				break;
 			fi
 			log "INFO" "process_challenge: ${_chal} status invalid"
 			_rc=1
@@ -1451,19 +1460,19 @@ process_challenge() {
 		# $i should have the value from the last successful test.
 		set_challenge_field "${_chal}" '.challenges['${_i}'].status = "valid"'
 		if [ $? -ne 0 ]; then
-			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
+			log "ERROR" "process_challenge: ${_chal} failed to set challenge status to valid"
 			exit 1
 		fi
 		set_challenge_field "${_chal}" '.status = "valid"'
 		if [ $? -ne 0 ]; then
-			log "ERROR" "process_challenge: failed to set challenge status to valid after successful test"
+			log "ERROR" "process_challenge: ${_chal} failed to set order status to valid"
 			exit 1
 		fi
 		log "INFO" "process_challenge: ${_chal} status valid"
 		set_challenge_field "${_chal}" '.challenges['${_i}'].validated = "'$(epoch_to_rfc3339 "$(now_epoch)")'"'
 #		set_challenge_field "${_chal}" '.validated = "'$(epoch_to_rfc3339 "$(now_epoch)")'"'
 		if [ $? -ne 0 ]; then
-			log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
+			log "ERROR" "process_challenge: ${_chal} failed to set challenge validated"
 			exit 1
 		fi
 		log "INFO" "process_challenge: ${_chal} success"
@@ -1754,13 +1763,13 @@ handle_account() {
 			fi
 			_BODY=$(${CAT} "${ACME_DIR}/accts/${acct}" | ${JQ} 'del(.jwk)')
 			set_header "Location: ${ISSUER_URL}/acct/${acct}"
-			log "INFO" "Account created ${acct}"
+			log "INFO" "account: ${acct} created"
 			return_result 201 "Created"
 			# no return
 		else
 			# account already exists
 			log_debug "handle_account: account already exists"
-			log "INFO" "Account ${acct} already exists."
+			log "INFO" "account: ${acct} already exists."
 			set_header "Location: ${ISSUER_URL}/acct/${acct}"
 			_BODY=$(${CAT} "${ACME_DIR}/accts/${acct}")
 			return_result 200 "Ok"
@@ -2625,7 +2634,7 @@ fi
 read_content
 
 # --- MAIN CGI HANDLER ---
-log_debug "request uri: $DOCUMENT_URI"
+log_debug "main: request uri: $DOCUMENT_URI"
 case "$DOCUMENT_URI" in
 	*"/directory")
 		handle_directory
