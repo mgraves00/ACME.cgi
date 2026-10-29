@@ -1233,6 +1233,7 @@ process_http01_request() {
 	fi
 	_tmpfile=$(${MKTEMP} -t "acme-challenge-${_host}.XXXXXXXX") || return 99
 	while [ "${_retry}" -gt 0 ]; do
+		log_debug "process_http01_request: testing ${_host} token ${_token}"
 		#NOTE: per RFC8555 fetching challenge over http:// and not https://.  The requestor
 		#		has been validated over the https:// request prior to this step and a challenge
 		#		token has been exchanged.  The token + the requstors thumbprint (neither of which)
@@ -1251,16 +1252,16 @@ process_http01_request() {
 			log_debug "process_http01_request: retreived value: ${_val}"
 			x=$(compare_http_token "${_acct}" "${_token}" "${_val}")
 			if [ $? -eq 0 ]; then
-				log "INFO" "process_http01_request: token compare success"
+				log "INFO" "process_http01_request: ${_acct} success"
 				_rc=0
 				break;
 			fi
-			log "ERROR" "process_http01_request: received token does not match expected"
+			log "ERROR" "process_http01_request: ${_acct} error token does not match"
 			# retreive succeeded... but token match failed
 			${PRINTF} '{"type": "urn:ietf:params:acme:error:connection", "details": "tokens do not match" }'
 			break;
 		fi
-		log_debug "process_http01_request: sleeping for ${_delay} retry ${_retry}"
+		log "INFO" "process_http01_request: ${_acct} sleeping for ${_delay} retry ${_retry}"
 		${SLEEP} "${_delay}"
 		_retry=$((_retry-1))
 	done
@@ -1286,6 +1287,7 @@ process_dns01_request() {
 		return 1
 	fi
 	while [ "${_retry}" -gt 0 ]; do
+		log_debug "process_dns01_request: testing ${_host} token ${_token}"
 		_resp=$(${DNSLOOKUP} -t TXT -W "${_timout}" "_acme-challenge.${_host}")
 		case "${_resp}" in
 			*"not found"*)
@@ -1296,7 +1298,7 @@ process_dns01_request() {
 				_resp=$(echo -n "${_resp}" | cut -f4 -d' ' | tr -d '"')
 				x=$(compare_dns_token "${_acct}" "${_token}" "${_resp}")
 				if [ $? -eq 0 ]; then
-					log "INFO" "process_dns01_request: token compare success"
+					log "INFO" "process_dns01_request: ${_acct} success"
 					_rc=0
 					break;
 				fi
@@ -1306,7 +1308,7 @@ process_dns01_request() {
 				break;
 				;;
 		esac
-		log_debug "process_dns01_request: sleeping for ${_delay} retry ${_retry}"
+		log "INFO" "process_dns01_request: ${_acct} sleeping for ${_delay} retry ${_retry}"
 		${SLEEP} "${_delay}"
 		_retry=$((_retry-1))
 	done
@@ -1378,7 +1380,7 @@ process_challenge() {
 				_ret=$(process_dns01_request "${target}" "${_acct}" "${token}" "${VERIFY_RETRIES}" "${VERIFY_DELAY}" "${VERIFY_TIMEOUT}")
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
-					log "INFO" "process_challenge: ${_chal} success"
+					log "INFO" "process_challenge: ${_chal} dns success"
 					break;
 				fi
 				;;
@@ -1387,7 +1389,7 @@ process_challenge() {
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
 					# success... so break loop
-					log "INFO" "process_challenge: ${_chal} success"
+					log "INFO" "process_challenge: ${_chal} http success"
 					break
 				fi
 				;;
@@ -1396,7 +1398,7 @@ process_challenge() {
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
 					# success... so break loop
-					log "INFO" "process_challenge: ${_chal} success"
+					log "INFO" "process_challenge: ${_chal} hotp success"
 					break
 				fi
 				;;
@@ -1405,7 +1407,7 @@ process_challenge() {
 				_rc=$?
 				if [ ${_rc} -eq 0 ]; then
 					# success... so break loop
-					log "INFO" "process_challenge: ${_chal} success"
+					log "INFO" "process_challenge: ${_chal} totp success"
 					break
 				fi
 				;;
@@ -1463,7 +1465,7 @@ process_challenge() {
 			log "ERROR" "process_challenge: failed to set challenge valiadted to time after successful test"
 			exit 1
 		fi
-		log "INFO" "process_challenge: end ${_chal}"
+		log "INFO" "process_challenge: ${_chal} success"
 		exit 0
 	fi
 	# we had all failures
@@ -2140,7 +2142,7 @@ handle_authz() {
 			return_error 500 "serverInternal" "error saving challenge object"
 			# no return
 		fi
-		log "INFO" "authz: challenge order created ${order}"
+		log "INFO" "authz: order created ${order}"
 	fi
 	return_result 200 "OK"
 	# no return
@@ -2462,8 +2464,8 @@ handle_certificate() {
 		return_error 400 "malformed" "no order in url"
 		# no return
 	fi
+	log "INFO" "certificate: order ${order}"
 	if [ -f "${ACME_DIR}/certs/${order}.pem" ]; then
-		log "INFO" "certificate: order ${order}"
 #NOTE: CAT to _BODY eats the newline and borks the cert. so replicate the
 # return_success() function.
 		set_header "Content-Type: application/pem-certificate-chain"
@@ -2478,7 +2480,7 @@ handle_certificate() {
 		# output a body if it exists
 		${CAT} "${ACME_DIR}/certs/${order}.pem" | ${SED} -n '/^-----/,/^-----/p'
 		clean_content
-		log "INFO" "certificate: success"
+		log "INFO" "certificate: issued"
 		exit 0
 	else
 		log "ERROR" "certificate: invalid certificate request"
