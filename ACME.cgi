@@ -471,7 +471,7 @@ read_content() {
 			return_error 500 "serverInternal" "error creating tmp file"
 			# no return
 		fi
-		log_debug "read_content: _REQ_FILE=${_REQ_FILE}"
+		log_debug2 "read_content: _REQ_FILE=${_REQ_FILE}"
 		# NOTE: relying on http server to actually limit the max size of the request
 		${CAT} - >"${_REQ_FILE}"
 		_sz=$(${CAT} "${_REQ_FILE}" | ${WC} -c | ${TR} -d ' ')
@@ -480,7 +480,7 @@ read_content() {
 			return_error 413 "malformed" "Content Size Mismatch"
 			# no return
 		fi
-		log_debug "read_content: content size ${_sz}"
+		log_debug2 "read_content: content size ${_sz}"
 		# save the protect and payload in base64 for validating jwk
 		_JWK64=$(${CAT} "${_REQ_FILE}" | ${JQ} -cr '(.protected // "") + "." + (.payload // "")')
 		# decode the base64 encodings
@@ -556,7 +556,7 @@ set_file_field() {
 		log_debug2 "set_file_field: no file given"
 		return 1
 	fi
-	log_debug "set_file_field: file name ${_file}"
+	log_debug2 "set_file_field: file name ${_file}"
 	if [ ! -f "${_file}" ]; then
 		log_debug2 "set_file_field: no file ${_file}"
 		return 1
@@ -582,7 +582,7 @@ query_file_field() {
 		echo ""
 		return 1
 	fi
-	log_debug "query_file_field: file name ${_file}"
+	log_debug2 "query_file_field: file name ${_file}"
 	if [ ! -s "${_file}" ]; then
 		log_debug2 "query_file_field: no file or size is 0: ${_file}"
 		echo ""
@@ -769,7 +769,7 @@ verify_cert_req() {
 	_valid_names=$*
 	_sans=$(extract_san "${_reqfile}" "req")
 	if [ $? -ne 0 ]; then
-		log_debug "verify_cert_req: error extracting SAN"
+		log_debug2 "verify_cert_req: error extracting SAN"
 		return 1
 	fi
 	_valid_names=$(lc "${_valid_names}")
@@ -778,7 +778,7 @@ verify_cert_req() {
 		_dns=$(echo "${_s}" | ${CUT} -f2 -d: | lc)
 		# make sure that the SAN is DNS... we do not support other types
 		if [ "${_typ}" != "DNS" ]; then
-			log_debug "verify_cert_req: unsupported SAN type ${_typ}"
+			log_debug2 "verify_cert_req: unsupported SAN type ${_typ}"
 			return 1
 		fi
 		# check name against list of valid names
@@ -794,14 +794,14 @@ verify_cert_req() {
 				fi
 			done
 			if [ $_f -eq 0 ]; then
-				log_debug "verify_cert_req: name not found in valid list: ${_dns} not in ${_valid_names}" 
+				log_debug2 "verify_cert_req: name not found in valid list: ${_dns} not in ${_valid_names}" 
 				return 1
 			fi
 		fi
 		# verify name is actually valid
 		verify_dns_name "${_dns}"
 		if [ $? -ne 0 ]; then
-			log_debug "verify_cert_req: dns name invalid"
+			log_debug2 "verify_cert_req: dns name invalid"
 			return 1
 		fi
 	done
@@ -911,10 +911,10 @@ verify_signature() {
 	_ret=$(echo -n "${_jwk64}" | ${OSSL} dgst "${_hash}" -verify "${_pemfile}" -signature "${_sigfile}")
 	if [ $? -ne 0 ]; then
 		log "ERROR" "verify_signature: failed verify signature"
-		log_debug "alg: ${_alg}"
-		log_debug "jwk64: ${_jwk64}"
-		log_debug "keyfile: $(${CAT} "${_pemfile}")"
-		log_debug "signature: $(${CAT} "${_sigfile}" | ${OSSL} enc -a -A)"
+		log_debug2 "alg: ${_alg}"
+		log_debug2 "jwk64: ${_jwk64}"
+		log_debug2 "keyfile: $(${CAT} "${_pemfile}")"
+		log_debug2 "signature: $(${CAT} "${_sigfile}" | ${OSSL} enc -a -A)"
 		log_debug "verify_signature: signature verify failed: ${_ret}"
 		#${CAT} ${_sigfile} | ${OSSL} asn1parse -inform DER -dump >&2
 		${RM} -f "${_sigfile}"
@@ -1118,7 +1118,7 @@ gen_thumbprint() {
 		echo "account not specified"
 		return 1
 	fi
-	_jwk=$(query_account_field "${_acct}" '.jwk // ""')
+	_jwk=$(query_account_field "${_acct}" '.jwk | to_entries | sort_by(.key) | from_entries // ""')
 	if [ $? -ne 0 ]; then
 		echo "error query_account_field"
 		return 1
@@ -1274,7 +1274,6 @@ process_http01_request() {
 		_retry=$((_retry-1))
 	done
 	${RM} -f "${_tmpfile}"
-	log_debug "process_http01_request: return ${_rc}"
 	return ${_rc}
 }
 
